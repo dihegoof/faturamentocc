@@ -10,33 +10,53 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as FaturamentoRouteImport } from './routes/faturamento'
+import { Route as RemessaRouteImport } from './routes/remessa'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FaturamentoRoute = FaturamentoRouteImport.update({
+  id: '/faturamento',
+  path: '/faturamento',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RemessaRoute = RemessaRouteImport.update({
+  id: '/remessa',
+  path: '/remessa',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/faturamento': typeof FaturamentoRoute
+  '/remessa': typeof RemessaRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/faturamento': typeof FaturamentoRoute
+  '/remessa': typeof RemessaRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/faturamento': typeof FaturamentoRoute
+  '/remessa': typeof RemessaRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/faturamento' | '/remessa'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/faturamento' | '/remessa'
+  id: '__root__' | '/' | '/faturamento' | '/remessa'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  FaturamentoRoute: typeof FaturamentoRoute
+  RemessaRoute: typeof RemessaRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +68,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/faturamento': {
+      id: '/faturamento'
+      path: '/faturamento'
+      fullPath: '/faturamento'
+      preLoaderRoute: typeof FaturamentoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/remessa': {
+      id: '/remessa'
+      path: '/remessa'
+      fullPath: '/remessa'
+      preLoaderRoute: typeof RemessaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  FaturamentoRoute: FaturamentoRoute,
+  RemessaRoute: RemessaRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -28,3 +28,7 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+## Project rules
+- Profiles (Faturamento/Remessa) are separate routes with no login; tables allow open access for internal use. Why: requested two work screens without accounts.
+- Cargo business rules (parser, plate format, MB box math, CT-e e-mail) live in `src/lib/cargo.ts` with tests in `src/lib/cargo.test.ts`. Why: keep rules testable and out of UI.
