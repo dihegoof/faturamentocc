@@ -15,7 +15,7 @@ import { useLoads, useNow } from "@/hooks/use-loads";
 import { updateLoad } from "@/lib/cargo-api";
 import { CORTE_REASONS, downloadCSV, formatPlateLine, minutesSince, statusLabel, todayISO, type CargoLoad } from "@/lib/cargo";
 
-export const Route = createFileRoute("/faturamento")({
+export const Route = createFileRoute("/_app/faturamento")({
   head: () => ({
     meta: [
       { title: "Faturamento — Cargas CocaCola" },
