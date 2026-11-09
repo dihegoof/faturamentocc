@@ -66,18 +66,16 @@ export const usersQuery = queryOptions({
   },
 });
 
-/** Para onde cada perfil vai ao entrar. */
 export function homeFor(profile: AppProfile): string {
-  if (profile === "faturamento") return "/faturamento";
-  if (profile === "remessa") return "/remessa";
-  return "/usuarios";
+  if (profile === "faturamento") return "/app/faturamento";
+  if (profile === "remessa") return "/app/remessa";
+  return "/app/usuarios";
 }
 
-/** Quem pode abrir cada área. */
 const ACCESS: Record<string, AppProfile[]> = {
-  "/faturamento": ["faturamento", "admin"],
-  "/remessa": ["remessa", "admin"],
-  "/usuarios": ["admin"],
+  "/app/faturamento": ["faturamento", "admin"],
+  "/app/remessa": ["remessa", "admin"],
+  "/app/usuarios": ["admin"],
 };
 
 export function canAccess(profile: AppProfile, path: string) {
