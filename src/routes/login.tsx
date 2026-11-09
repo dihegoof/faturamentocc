@@ -7,6 +7,11 @@ import { Label } from "@/components/ui/label";
 import { signIn, homeFor } from "@/lib/auth";
 
 export const Route = createFileRoute("/login")({
+  ssr: false,
+  beforeLoad: () => {
+    const user = getStoredUser();
+    if (user) throw redirect({ to: homeFor(user.profile) });
+  },
   head: () => ({ meta: [{ title: "Entrar — Cargas CocaCola" }] }),
   component: LoginPage,
 });
