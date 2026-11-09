@@ -14,7 +14,7 @@ import { fetchLoadsRange } from "@/lib/cargo-api";
 import { minutesSince, formatDuration, todayISO, type CargoLoad } from "@/lib/cargo";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/remessa")({
+export const Route = createFileRoute("/_app/remessa")({
   head: () => ({
     meta: [
       { title: "Remessa — Cargas CocaCola" },
