@@ -235,10 +235,11 @@ function csvCell(v: unknown): string {
   return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-export function toCSV(rows: Record<string, unknown>[]): string {
-  if (!rows.length) return "";
-  const headers = Object.keys(rows[0] ?? {});
-  return [headers.join(";"), ...rows.map((r) => headers.map((h) => csvCell(r[h])).join(";"))].join("\n");
+function csvCell(v: unknown): string {
+  let s = v == null ? "" : String(v);
+  // Neutraliza fórmulas: prefixa com apóstrofo quando começa com = + - @ ou tab/CR
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 export function downloadCSV(name: string, rows: Record<string, unknown>[]) {
