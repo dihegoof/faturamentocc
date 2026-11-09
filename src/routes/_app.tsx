@@ -17,10 +17,11 @@ export const Route = createFileRoute("/_app")({
 });
 
 const NAV: { to: string; label: string; profiles: AppProfile[] }[] = [
-  { to: "/faturamento", label: "Faturamento", profiles: ["faturamento", "admin"] },
-  { to: "/remessa", label: "Remessa", profiles: ["remessa", "admin"] },
-  { to: "/usuarios", label: "Usuários", profiles: ["admin"] },
+  { to: "/app/faturamento", label: "Faturamento", profiles: ["faturamento", "admin"] },
+  { to: "/app/remessa", label: "Remessa", profiles: ["remessa", "admin"] },
+  { to: "/app/usuarios", label: "Usuários", profiles: ["admin"] },
 ];
+
 
 function AppShell() {
   const { user } = Route.useRouteContext();
