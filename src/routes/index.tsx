@@ -24,8 +24,8 @@ function Index() {
         <p className="mt-2 text-center text-primary-foreground/80">Controle operacional de cargas. Escolha seu perfil de trabalho.</p>
         <div className="mt-10 grid w-full max-w-3xl gap-4 md:grid-cols-2">
           {[
-            { to: "/faturamento" as const, icon: FileText, title: "Faturamento", text: "Faturar, solicitar CT-e, registrar corte, impressão e finalizar cargas." },
-            { to: "/remessa" as const, icon: ClipboardPaste, title: "Remessa", text: "Importar cargas, acompanhar status em tempo real e consultar histórico." },
+            { to: "/app/faturamento" as const, icon: FileText, title: "Faturamento", text: "Faturar, solicitar CT-e, registrar corte, impressão e finalizar cargas." },
+            { to: "/app/remessa" as const, icon: ClipboardPaste, title: "Remessa", text: "Importar cargas, acompanhar status em tempo real e consultar histórico." },
           ].map(({ to, icon: Icon, title, text }) => (
             <Link key={to} to={to} className="group rounded-xl bg-card p-6 text-card-foreground shadow-xl transition-transform hover:-translate-y-1">
               <Icon className="h-8 w-8 text-primary" />
