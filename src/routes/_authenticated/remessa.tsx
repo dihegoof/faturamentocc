@@ -21,12 +21,20 @@ export const Route = createFileRoute("/_authenticated/remessa")({
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { title: "Remessa — Cargas CocaCola" },
-      { name: "description", content: "Importação de cargas, acompanhamento em tempo real e histórico dos últimos 30 dias." },
+      {
+        name: "description",
+        content:
+          "Importação de cargas, acompanhamento em tempo real e histórico dos últimos 30 dias.",
+      },
       { property: "og:title", content: "Remessa — Cargas CocaCola" },
       { property: "og:description", content: "Importação e acompanhamento de cargas." },
     ],
   }),
-  component: () => <AccountShell><Remessa /></AccountShell>,
+  component: () => (
+    <AccountShell>
+      <Remessa />
+    </AccountShell>
+  ),
 });
 
 function last30(): string[] {
@@ -62,20 +70,34 @@ function Remessa() {
   const max = Math.max(1, ...perDay.values());
 
   const done = loads.filter((l) => l.finalized_at);
-  const avg = done.length ? Math.round(done.reduce((s, l) => s + minutesSince(l.created_at, new Date(l.finalized_at ?? l.created_at).getTime()), 0) / done.length) : 0;
+  const avg = done.length
+    ? Math.round(
+        done.reduce(
+          (s, l) =>
+            s + minutesSince(l.created_at, new Date(l.finalized_at ?? l.created_at).getTime()),
+          0,
+        ) / done.length,
+      )
+    : 0;
   const pallets = loads.reduce((s, l) => s + Number(l.pallets ?? 0), 0);
 
   return (
     <div className="min-h-screen">
       <AppHeader profile="remessa">
-        <PlateSearch onOpen={setDetail} />
-        <Button size="sm" variant="secondary" onClick={() => setImportText(true)}><ClipboardPaste className="h-4 w-4" /> Importar cargas</Button>
-        <Button size="sm" variant="secondary" onClick={() => setImportMB(true)}><PackagePlus className="h-4 w-4" /> Carga MB</Button>
+        <PlateSearch onOpen={setDetail} profile="remessa" />
+        <Button size="sm" variant="secondary" onClick={() => setImportText(true)}>
+          <ClipboardPaste className="h-4 w-4" /> Importar cargas
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => setImportMB(true)}>
+          <PackagePlus className="h-4 w-4" /> Carga MB
+        </Button>
       </AppHeader>
       <main className="mx-auto max-w-[1500px] space-y-5 p-4 md:p-6">
         <section className="rounded-lg border bg-card p-3">
           <div className="mb-2 flex items-center justify-between">
-            <h2 className="font-display text-lg font-bold uppercase">Histórico — últimos 30 dias</h2>
+            <h2 className="font-display text-lg font-bold uppercase">
+              Histórico — últimos 30 dias
+            </h2>
             <span className="text-xs text-muted-foreground">{range.length} cargas no período</span>
           </div>
           <div className="flex gap-1 overflow-x-auto pb-1">
@@ -85,14 +107,24 @@ function Remessa() {
                 <button
                   key={d}
                   onClick={() => setDate(d)}
-                  className={cn("flex w-10 shrink-0 flex-col items-center gap-1 rounded p-1 text-[10px] transition-colors",
-                    d === date ? "bg-primary text-primary-foreground" : "hover:bg-muted")}
+                  className={cn(
+                    "flex w-10 shrink-0 flex-col items-center gap-1 rounded p-1 text-[10px] transition-colors",
+                    d === date ? "bg-primary text-primary-foreground" : "hover:bg-muted",
+                  )}
                   title={`${n} carga(s)`}
                 >
                   <span className="flex h-12 w-3 items-end rounded-sm bg-muted">
-                    <span className={cn("w-full rounded-sm", d === date ? "bg-primary-foreground" : "bg-primary")} style={{ height: `${(n / max) * 100}%` }} />
+                    <span
+                      className={cn(
+                        "w-full rounded-sm",
+                        d === date ? "bg-primary-foreground" : "bg-primary",
+                      )}
+                      style={{ height: `${(n / max) * 100}%` }}
+                    />
                   </span>
-                  <span className="font-mono">{d.slice(8, 10)}/{d.slice(5, 7)}</span>
+                  <span className="font-mono">
+                    {d.slice(8, 10)}/{d.slice(5, 7)}
+                  </span>
                 </button>
               );
             })}
@@ -113,11 +145,13 @@ function Remessa() {
           ))}
         </section>
 
-        {isLoading ? <p className="text-muted-foreground">Carregando cargas…</p> : (
-          <Board loads={loads} now={now} onOpen={setDetail} />
+        {isLoading ? (
+          <p className="text-muted-foreground">Carregando cargas…</p>
+        ) : (
+          <Board loads={loads} now={now} onOpen={setDetail} profile="remessa" />
         )}
       </main>
-      <LoadDetailDialog load={detail} onClose={() => setDetail(null)} />
+      <LoadDetailDialog load={detail} onClose={() => setDetail(null)} profile="remessa" />
       <ImportTextDialog open={importText} onOpenChange={setImportText} />
       <ImportMBDialog open={importMB} onOpenChange={setImportMB} />
     </div>
