@@ -22,11 +22,14 @@ export interface CargoLoad {
   load_number: string;
   origin: string | null;
   destination: string | null;
+  destination_code: string | null;
   carrier: string | null;
   plate: string | null;
   dt: string | null;
   pallets: number | null;
   invoice_numbers: string | null;
+  product_order: string | null;
+  pallet_order: string | null;
   status: string;
   corte_reason: string | null;
   cte_requested_at: string | null;
@@ -49,6 +52,7 @@ export interface ParsedLoad {
   load_number: string;
   origin: string;
   destination: string;
+  destination_code: string;
   carrier: string;
   plate: string;
   dt: string;
@@ -62,11 +66,29 @@ export function normalizePlate(raw: string): string {
   return (raw || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
-/** Plate display pattern: "GHE1B55 ED - 9939 | Transportadora" */
-export function formatPlateLine(load: Pick<CargoLoad, "plate" | "dt" | "carrier">): string {
+/** Last 4 digits of the DT (transport number), used as the plate suffix "ED - 7853". */
+export function dtSuffix(dt: string | null | undefined): string {
+  const digits = (dt ?? "").replace(/\D/g, "");
+  return digits ? digits.slice(-4) : "—";
+}
+
+/**
+ * Plate display pattern. Faturamento: "GHE1B55 ED - 9939 | Transportadora";
+ * Remessa sees only "GHE1B55 | Transportadora".
+ */
+export function formatPlateLine(
+  load: Pick<CargoLoad, "plate" | "dt" | "carrier">,
+  profile: Profile = "faturamento",
+): string {
   const plate = normalizePlate(load.plate ?? "") || "—";
-  const dt = load.dt ? `ED - ${load.dt}` : "ED - —";
-  return `${plate} ${dt} | ${load.carrier || "—"}`;
+  const carrier = load.carrier || "—";
+  if (profile === "remessa") return `${plate} | ${carrier}`;
+  return `${plate} ED - ${dtSuffix(load.dt)} | ${carrier}`;
+}
+
+/** Finds a Brazilian plate (old or Mercosul) inside a cell, e.g. "BDD3G22 ED" -> "BDD3G22". */
+export function extractPlate(raw: string): string {
+  return normalizePlate(raw).match(/[A-Z]{3}[0-9][A-Z0-9][0-9]{2}/)?.[0] ?? "";
 }
 
 export function isValidPlate(p: string): boolean {
@@ -89,6 +111,8 @@ export function todayISO(): string {
   return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10);
 }
 
+const MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
 function toISODate(raw: string): string {
   const s = raw.trim();
   let m = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/);
@@ -97,17 +121,32 @@ function toISODate(raw: string): string {
     const y = yr.length === 2 ? `20${yr}` : yr;
     return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
   }
+  m = s.toLowerCase().match(/^(\d{1,2})[/.\s-]([a-zç]{3})[a-zç]*\.?[/.\s-](\d{2,4})$/);
+  if (m) {
+    const [, d = "", mon = "", yr = ""] = m;
+    const mo = MONTHS.indexOf(mon) + 1;
+    if (mo > 0)
+      return `${yr.length === 2 ? `20${yr}` : yr}-${String(mo).padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
   m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (m) return `${m[1]}-${m[2]}-${m[3]}`;
   return "";
 }
 
 const num = (v: string) => {
-  const n = Number(String(v ?? "").replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, ""));
+  const n = Number(
+    String(v ?? "")
+      .replace(/\./g, "")
+      .replace(",", ".")
+      .replace(/[^\d.-]/g, ""),
+  );
   return Number.isFinite(n) ? n : 0;
 };
 
-const HEADER_MAP: Record<string, keyof Omit<ParsedLoad, "products" | "warnings"> | "code" | "description" | "boxes"> = {
+const HEADER_MAP: Record<
+  string,
+  keyof Omit<ParsedLoad, "products" | "warnings"> | "code" | "description" | "boxes"
+> = {
   data: "load_date",
   "data prevista": "load_date",
   carga: "load_number",
@@ -116,7 +155,10 @@ const HEADER_MAP: Record<string, keyof Omit<ParsedLoad, "products" | "warnings">
   origem: "origin",
   "centro origem": "origin",
   destino: "destination",
-  "centro destino": "destination",
+  "centro destino": "destination_code",
+  "cod destino": "destination_code",
+  "código destino": "destination_code",
+  transporte: "dt",
   transportadora: "carrier",
   placa: "plate",
   dt: "dt",
@@ -137,19 +179,29 @@ const HEADER_MAP: Record<string, keyof Omit<ParsedLoad, "products" | "warnings">
 function splitRow(line: string): string[] {
   if (line.includes("\t")) return line.split("\t");
   if (line.includes(";")) return line.split(";");
-  if (line.includes("|")) return line.split("|").filter((_, i, a) => !(i === 0 && (a[0] ?? "").trim() === ""));
+  if (line.includes("|"))
+    return line.split("|").filter((_, i, a) => !(i === 0 && (a[0] ?? "").trim() === ""));
   return line.split(/\s{2,}/);
 }
 
 /**
- * Parses pasted e-mail/spreadsheet text. Requires a header row with the known
- * columns; each row is one product line, grouped by Carga number.
+ * Parses pasted e-mail/spreadsheet text; each row is one product line, grouped by
+ * Carga number. With a recognizable header row, columns are mapped by name;
+ * otherwise rows are read positionally in the Remessa layout (see parsePositionalRows).
  */
-export function parseCargoText(text: string, fallbackDate = todayISO()): { loads: ParsedLoad[]; errors: string[] } {
+export function parseCargoText(
+  text: string,
+  fallbackDate = todayISO(),
+): { loads: ParsedLoad[]; errors: string[] } {
   const errors: string[] = [];
-  const lines = text.split(/\r?\n/).map((l) => l.trimEnd()).filter((l) => l.trim());
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trimEnd())
+    .filter((l) => l.trim());
   let headerIdx = -1;
-  let cols: (keyof typeof HEADER_MAP extends never ? never : (typeof HEADER_MAP)[string] | undefined)[] = [];
+  let cols: (keyof typeof HEADER_MAP extends never
+    ? never
+    : (typeof HEADER_MAP)[string] | undefined)[] = [];
   for (let i = 0; i < lines.length; i++) {
     const cells = splitRow(lines[i] ?? "").map((c) => c.trim().toLowerCase());
     const mapped = cells.map((c) => HEADER_MAP[c]);
@@ -160,14 +212,35 @@ export function parseCargoText(text: string, fallbackDate = todayISO()): { loads
     }
   }
   if (headerIdx < 0) {
-    errors.push("Cabeçalho não encontrado. Inclua colunas como Data, Carga, Origem, Destino, Transportadora, Placa, DT, Pallets, Código, Descrição, Caixas.");
-    return { loads: [], errors };
+    const loads = parsePositionalRows(lines, fallbackDate);
+    if (!loads.length) {
+      errors.push(
+        "Nenhuma carga reconhecida. Cole as linhas na ordem: Data, Nº Carga, Origem, Sigla destino, Destino, SKU, Descrição, Caixas, Pallets, Transportadora, Placa, Transporte (DT).",
+      );
+    }
+    return { loads, errors };
   }
 
   const byNumber = new Map<string, ParsedLoad>();
   for (let i = headerIdx + 1; i < lines.length; i++) {
     const cells = splitRow(lines[i] ?? "").map((c) => c.trim());
-    const row: Partial<Record<"load_date" | "load_number" | "origin" | "destination" | "carrier" | "plate" | "dt" | "pallets" | "code" | "description" | "boxes", string>> = {};
+    const row: Partial<
+      Record<
+        | "load_date"
+        | "load_number"
+        | "origin"
+        | "destination"
+        | "destination_code"
+        | "carrier"
+        | "plate"
+        | "dt"
+        | "pallets"
+        | "code"
+        | "description"
+        | "boxes",
+        string
+      >
+    > = {};
     cols.forEach((k, j) => {
       if (k) row[k] = cells[j] ?? "";
     });
@@ -180,6 +253,7 @@ export function parseCargoText(text: string, fallbackDate = todayISO()): { loads
         load_number: loadNumber,
         origin: row.origin || "",
         destination: row.destination || "",
+        destination_code: (row.destination_code || "").trim().toUpperCase(),
         carrier: row.carrier || "",
         plate: normalizePlate(row.plate || ""),
         dt: (row.dt || "").replace(/\D/g, ""),
@@ -190,29 +264,132 @@ export function parseCargoText(text: string, fallbackDate = todayISO()): { loads
       byNumber.set(loadNumber, load);
     } else {
       const check = (field: "origin" | "destination" | "carrier", v?: string) => {
-        if (v && load![field] && v !== load![field]) load!.warnings.push(`${field} divergente: "${load![field]}" x "${v}"`);
+        if (v && load![field] && v !== load![field])
+          load!.warnings.push(`${field} divergente: "${load![field]}" x "${v}"`);
       };
       check("origin", row.origin);
       check("destination", row.destination);
       check("carrier", row.carrier);
       const p = normalizePlate(row.plate || "");
-      if (p && load.plate && p !== load.plate) load.warnings.push(`Placa divergente: ${load.plate} x ${p}`);
-      if (row.pallets && num(row.pallets) !== load.pallets) load.pallets = Math.max(load.pallets, num(row.pallets));
+      if (p && load.plate && p !== load.plate)
+        load.warnings.push(`Placa divergente: ${load.plate} x ${p}`);
+      if (row.pallets && num(row.pallets) !== load.pallets)
+        load.pallets = Math.max(load.pallets, num(row.pallets));
     }
     if (row.code || row.description) {
-      load.products.push({ code: row.code || "", description: row.description || "", boxes: num(row.boxes || "0") });
+      load.products.push({
+        code: row.code || "",
+        description: row.description || "",
+        boxes: num(row.boxes || "0"),
+      });
     }
   }
 
-  for (const l of byNumber.values()) {
-    if (!l.plate) l.warnings.push("Placa ausente");
-    else if (!isValidPlate(l.plate)) l.warnings.push(`Placa fora do padrão: ${l.plate}`);
-    if (!l.dt) l.warnings.push("DT ausente");
-    if (!l.carrier) l.warnings.push("Transportadora ausente");
-    if (!l.products.length) l.warnings.push("Nenhum produto");
-    if (l.products.some((p) => !p.boxes)) l.warnings.push("Produto com 0 caixas");
+  const loads = [...byNumber.values()];
+  loads.forEach(addLoadWarnings);
+  return { loads, errors };
+}
+
+function addLoadWarnings(l: ParsedLoad) {
+  if (!l.plate) l.warnings.push("Placa ausente");
+  else if (!isValidPlate(l.plate)) l.warnings.push(`Placa fora do padrão: ${l.plate}`);
+  if (!l.dt) l.warnings.push("DT ausente");
+  if (!l.carrier) l.warnings.push("Transportadora ausente");
+  if (!l.products.length) l.warnings.push("Nenhum produto");
+  if (l.products.some((p) => !p.boxes)) l.warnings.push("Produto com 0 caixas");
+}
+
+const blank = (v: string | undefined) => {
+  const t = (v ?? "").trim();
+  return t === "-" || t === "—" || /^#N\/?D$/i.test(t) ? "" : t;
+};
+
+/**
+ * Headerless Remessa layout, one product per row:
+ * Data | Nº Carga | Origem | Sigla destino | Destino | SKU | Descrição | Caixas | Pallets | Transportadora | Placa | Transporte (DT)
+ * Rows of the same carga may repeat the load columns or leave them blank/"-"
+ * (then the product belongs to the previous carga). Pallets are per product and summed.
+ */
+export function parsePositionalRows(lines: string[], fallbackDate = todayISO()): ParsedLoad[] {
+  const byNumber = new Map<string, ParsedLoad>();
+  let last: ParsedLoad | undefined;
+  for (const line of lines) {
+    const raw = splitRow(line);
+    if (blank(raw[0]) === "" && toISODate(blank(raw[1])) && raw.length > 12) raw.shift();
+    const c = raw.map(blank);
+    const [
+      date = "",
+      loadNumber = "",
+      origin = "",
+      destCode = "",
+      destName = "",
+      code = "",
+      description = "",
+      boxes = "",
+      pallets = "",
+      carrier = "",
+    ] = c;
+    const tail = c.slice(10);
+    const dtCell = tail.find((v) => /^\d{6,}$/.test(v.replace(/[.\s]/g, ""))) ?? "";
+    const plateCell =
+      tail.find((v) => extractPlate(v)) ??
+      (tail.length <= 2 && tail[0] !== dtCell ? (tail[0] ?? "") : "");
+    const plate = extractPlate(plateCell) || normalizePlate(plateCell);
+    const dt = dtCell.replace(/\D/g, "");
+    const hasProduct = !!(code || description);
+    const hasLoadInfo = !!(toISODate(date) || destCode || destName || carrier || plate || dt);
+
+    let load: ParsedLoad | undefined;
+    if (loadNumber && /^[\w./-]+$/.test(loadNumber) && (hasProduct || hasLoadInfo)) {
+      load = byNumber.get(loadNumber);
+      if (!load) {
+        load = {
+          load_date: toISODate(date) || fallbackDate,
+          load_number: loadNumber,
+          origin,
+          destination: destName,
+          destination_code: destCode.toUpperCase(),
+          carrier,
+          plate,
+          dt,
+          pallets: 0,
+          products: [],
+          warnings: [],
+        };
+        byNumber.set(loadNumber, load);
+      } else {
+        const fill = (
+          field: "origin" | "destination" | "destination_code" | "carrier" | "plate" | "dt",
+          v: string,
+          label: string,
+        ) => {
+          if (!v) return;
+          if (!load![field]) load![field] = v;
+          else if (load![field] !== v && !load!.warnings.some((w) => w.startsWith(label)))
+            load!.warnings.push(`${label} divergente: "${load![field]}" x "${v}"`);
+        };
+        fill("origin", origin, "Origem");
+        fill("destination", destName, "Destino");
+        fill("destination_code", destCode.toUpperCase(), "Sigla destino");
+        fill("carrier", carrier, "Transportadora");
+        fill("plate", plate, "Placa");
+        fill("dt", dt, "DT");
+      }
+      last = load;
+    } else if (!loadNumber && hasProduct && last) {
+      load = last;
+    }
+    if (!load || !hasProduct) continue;
+    load.products.push({
+      code: /^\d{1,3}(\.\d{3})+$/.test(code) ? code.replace(/\./g, "") : code,
+      description,
+      boxes: num(boxes),
+    });
+    load.pallets += num(pallets);
   }
-  return { loads: [...byNumber.values()], errors };
+  const loads = [...byNumber.values()].filter((l) => l.products.length || l.plate || l.dt);
+  loads.forEach(addLoadWarnings);
+  return loads;
 }
 
 export interface MBProduct {
@@ -239,7 +416,10 @@ function csvCell(v: unknown): string {
 
 export function toCSV(rows: Record<string, unknown>[]): string {
   const columns = Object.keys(rows[0] ?? {});
-  return [columns.map(csvCell).join(";"), ...rows.map((row) => columns.map((column) => csvCell(row[column])).join(";"))].join("\n");
+  return [
+    columns.map(csvCell).join(";"),
+    ...rows.map((row) => columns.map((column) => csvCell(row[column])).join(";")),
+  ].join("\n");
 }
 
 export function downloadCSV(name: string, rows: Record<string, unknown>[]) {
@@ -252,7 +432,9 @@ export function downloadCSV(name: string, rows: Record<string, unknown>[]) {
   URL.revokeObjectURL(url);
 }
 
-export function buildCteEmail(load: Pick<CargoLoad, "dt" | "plate" | "carrier" | "load_number" | "origin" | "destination">) {
+export function buildCteEmail(
+  load: Pick<CargoLoad, "dt" | "plate" | "carrier" | "load_number" | "origin" | "destination">,
+) {
   const subject = `Solicitação de CT-e — DT ${load.dt ?? "—"} | Placa ${normalizePlate(load.plate ?? "")}`;
   const body = [
     "Prezados, bom dia/boa tarde.",
