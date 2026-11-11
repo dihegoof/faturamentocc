@@ -4,10 +4,16 @@ import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { searchByPlate } from "@/lib/cargo-api";
-import { formatPlateLine, normalizePlate, type CargoLoad } from "@/lib/cargo";
+import { formatPlateLine, normalizePlate, type CargoLoad, type Profile } from "@/lib/cargo";
 import { StatusBadge } from "./StatusBadge";
 
-export function PlateSearch({ onOpen }: { onOpen: (l: CargoLoad) => void }) {
+export function PlateSearch({
+  onOpen,
+  profile,
+}: {
+  onOpen: (l: CargoLoad) => void;
+  profile: Profile;
+}) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const term = normalizePlate(q);
@@ -40,7 +46,9 @@ export function PlateSearch({ onOpen }: { onOpen: (l: CargoLoad) => void }) {
           </SheetHeader>
           <div className="mt-4 space-y-2 px-4">
             {isFetching && <p className="text-sm text-muted-foreground">Buscando…</p>}
-            {!isFetching && !data.length && <p className="text-sm text-muted-foreground">Nenhuma carga encontrada.</p>}
+            {!isFetching && !data.length && (
+              <p className="text-sm text-muted-foreground">Nenhuma carga encontrada.</p>
+            )}
             {data.map((l) => (
               <button
                 key={l.id}
@@ -52,7 +60,7 @@ export function PlateSearch({ onOpen }: { onOpen: (l: CargoLoad) => void }) {
                   <StatusBadge status={l.status} />
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {l.load_date.split("-").reverse().join("/")} · {formatPlateLine(l)}
+                  {l.load_date.split("-").reverse().join("/")} · {formatPlateLine(l, profile)}
                 </div>
               </button>
             ))}

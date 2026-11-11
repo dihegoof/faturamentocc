@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { STATUSES, type CargoLoad } from "@/lib/cargo";
+import { STATUSES, type CargoLoad, type Profile } from "@/lib/cargo";
 import { LoadCard } from "./LoadCard";
 import { STATUS_BAR } from "./StatusBadge";
 import { cn } from "@/lib/utils";
@@ -10,7 +10,9 @@ export function Board({
   now,
   onOpen,
   renderActions,
+  profile,
 }: {
+  profile: Profile;
   loads: CargoLoad[];
   now: number;
   onOpen: (l: CargoLoad) => void;
@@ -21,17 +23,36 @@ export function Board({
     const t = q.trim().toLowerCase();
     if (!t) return loads;
     return loads.filter((l) =>
-      [l.load_number, l.plate, l.dt, l.carrier, l.destination, l.origin, l.invoice_numbers].some((v) => v?.toLowerCase().includes(t)),
+      [
+        l.load_number,
+        l.plate,
+        l.dt,
+        l.carrier,
+        l.destination,
+        l.destination_code,
+        l.origin,
+        l.invoice_numbers,
+        l.product_order,
+        l.pallet_order,
+      ].some((v) => v?.toLowerCase().includes(t)),
     );
   }, [loads, q]);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Busca rápida: carga, placa, DT, transportadora…" className="max-w-md bg-card" />
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Busca rápida: carga, placa, DT, transportadora…"
+          className="max-w-md bg-card"
+        />
         <div className="flex flex-wrap gap-2 text-xs">
           {STATUSES.map((s) => (
-            <span key={s.key} className="flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 font-semibold">
+            <span
+              key={s.key}
+              className="flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 font-semibold"
+            >
               <span className={cn("h-2 w-2 rounded-full", STATUS_BAR[s.key])} />
               {s.label}: {loads.filter((l) => l.status === s.key).length}
             </span>
@@ -52,9 +73,20 @@ export function Board({
               </h2>
               <div className="space-y-2">
                 {items.map((l) => (
-                  <LoadCard key={l.id} load={l} now={now} onOpen={() => onOpen(l)} actions={renderActions?.(l)} />
+                  <LoadCard
+                    key={l.id}
+                    load={l}
+                    now={now}
+                    profile={profile}
+                    onOpen={() => onOpen(l)}
+                    actions={renderActions?.(l)}
+                  />
                 ))}
-                {!items.length && <p className="px-1 py-4 text-center text-xs text-muted-foreground">Nenhuma carga</p>}
+                {!items.length && (
+                  <p className="px-1 py-4 text-center text-xs text-muted-foreground">
+                    Nenhuma carga
+                  </p>
+                )}
               </div>
             </section>
           );
