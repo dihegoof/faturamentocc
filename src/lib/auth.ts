@@ -11,6 +11,18 @@ export interface AppUser {
   active: boolean;
 }
 
+export function homeFor(profile: AppProfile): string {
+  if (profile === "faturamento") return "/faturamento";
+  if (profile === "remessa") return "/remessa";
+  return "/usuarios";
+}
+
+const ACCESS: Record<string, AppProfile[]> = {
+  "/faturamento": ["faturamento", "admin"],
+  "/remessa": ["remessa", "admin"],
+  "/usuarios": ["admin"],
+};
+
 export async function getCurrentUser(): Promise<AppUser | null> {
   const { data: auth, error } = await supabase.auth.getUser();
   if (error || !auth.user) return null;
