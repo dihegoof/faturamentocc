@@ -1,7 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { Truck } from "lucide-react";
 import type { Profile } from "@/lib/cargo";
-import { cn } from "@/lib/utils";
 
 export function AppHeader({ profile, children }: { profile: Profile; children?: React.ReactNode }) {
   return (
@@ -13,20 +12,7 @@ export function AppHeader({ profile, children }: { profile: Profile; children?: 
           </span>
           <span className="font-display text-2xl font-bold uppercase tracking-wide">Cargas · CocaCola</span>
         </Link>
-        <nav className="flex rounded-md bg-primary-foreground/10 p-1 text-sm font-semibold">
-          {(["faturamento", "remessa"] as const).map((p) => (
-            <Link
-              key={p}
-              to={p === "faturamento" ? "/faturamento" : "/remessa"}
-              className={cn(
-                "rounded px-3 py-1.5 capitalize transition-colors",
-                profile === p ? "bg-primary-foreground text-primary" : "hover:bg-primary-foreground/10",
-              )}
-            >
-              {p}
-            </Link>
-          ))}
-        </nav>
+        <span className="text-sm font-semibold capitalize">{profile}</span>
         <div className="ml-auto flex flex-wrap items-center gap-2">{children}</div>
       </div>
     </header>

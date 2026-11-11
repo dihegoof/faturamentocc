@@ -1,84 +1,44 @@
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-
-export type AppProfile = "admin" | "faturamento" | "remessa";
+import type { AppProfile } from "./access";
+export { homeFor, canAccess, type AppProfile } from "./access";
 
 export interface AppUser {
   id: string;
-  username: string;
+  email: string;
   display_name: string;
   profile: AppProfile;
   active: boolean;
 }
 
-const STORAGE_KEY = "cc_user";
+export async function getCurrentUser(): Promise<AppUser | null> {
+  const { data: auth, error } = await supabase.auth.getUser();
+  if (error || !auth.user) return null;
+  const [profile, role] = await Promise.all([
+    supabase.from("profiles").select("*").eq("id", auth.user.id).single(),
+    supabase.from("user_roles").select("role").eq("user_id", auth.user.id).single(),
+  ]);
+  if (profile.error || role.error || !profile.data.active) return null;
+  return { ...profile.data, profile: role.data.role };
+}
 
-export function getStoredUser(): AppUser | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as AppUser) : null;
-  } catch {
-    return null;
+export async function signIn(email: string, password: string) {
+  const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
+  if (error) throw new Error(error.message === "Invalid login credentials" ? "E-mail ou senha inválidos." : error.message);
+  const user = await getCurrentUser();
+  if (!user) {
+    await supabase.auth.signOut();
+    throw new Error("Conta sem acesso ou desativada. Consulte o administrador.");
   }
-}
-
-export function storeUser(u: AppUser | null) {
-  if (u) localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
-  else localStorage.removeItem(STORAGE_KEY);
-}
-
-/** Login simples: confere usuário+senha na tabela app_users. */
-export async function signIn(username: string, password: string): Promise<AppUser> {
-  const { data, error } = await supabase
-    .from("app_users")
-    .select("id, username, password, display_name, profile, active")
-    .eq("username", username.trim().toLowerCase())
-    .maybeSingle();
-
-  if (error) throw error;
-  if (!data || data.password !== password) throw new Error("Usuário ou senha inválidos.");
-  if (!data.active) throw new Error("Usuário desativado. Peça ao administrador.");
-
-  const user: AppUser = {
-    id: data.id,
-    username: data.username,
-    display_name: data.display_name,
-    profile: data.profile as AppProfile,
-    active: data.active,
-  };
-  storeUser(user);
   return user;
 }
 
-export function signOut() {
-  storeUser(null);
-}
-
 export const usersQuery = queryOptions({
-  queryKey: ["app_users"],
+  queryKey: ["accounts"],
   queryFn: async () => {
-    const { data, error } = await supabase
-      .from("app_users")
-      .select("id, username, display_name, profile, active")
-      .order("username");
-    if (error) throw error;
-    return data as AppUser[];
+    const [profiles, roles] = await Promise.all([supabase.from("profiles").select("*").order("display_name"), supabase.from("user_roles").select("user_id,role")]);
+    if (profiles.error) throw profiles.error;
+    if (roles.error) throw roles.error;
+    return profiles.data.map((p) => ({ ...p, profile: roles.data.find((r) => r.user_id === p.id)?.role ?? "remessa" }));
   },
 });
-
-export function homeFor(profile: AppProfile): string {
-  if (profile === "faturamento") return "/app/faturamento";
-  if (profile === "remessa") return "/app/remessa";
-  return "/app/usuarios";
-}
-
-const ACCESS: Record<string, AppProfile[]> = {
-  "/app/faturamento": ["faturamento", "admin"],
-  "/app/remessa": ["remessa", "admin"],
-  "/app/usuarios": ["admin"],
-};
-
-export function canAccess(profile: AppProfile, path: string) {
-  const allowed = ACCESS[path];
-  return !allowed || allowed.includes(profile);
-}

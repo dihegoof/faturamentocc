@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Download, FileText, Mail, Printer, Scissors, Truck, Undo2 } from "lucide-react";
+import { AccountShell } from "@/components/cargo/AccountShell";
 import { AppHeader } from "@/components/cargo/AppHeader";
 import { Board } from "@/components/cargo/Board";
 import { LoadDetailDialog } from "@/components/cargo/LoadDetailDialog";
@@ -15,16 +16,18 @@ import { useLoads, useNow } from "@/hooks/use-loads";
 import { updateLoad } from "@/lib/cargo-api";
 import { CORTE_REASONS, downloadCSV, formatPlateLine, minutesSince, statusLabel, todayISO, type CargoLoad } from "@/lib/cargo";
 
-export const Route = createFileRoute("/_app/faturamento")({
+export const Route = createFileRoute("/_authenticated/faturamento")({
   head: () => ({
     meta: [
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
       { title: "Faturamento — Cargas CocaCola" },
       { name: "description", content: "Painel operacional de faturamento: faturar, CT-e, corte e finalização de cargas." },
       { property: "og:title", content: "Faturamento — Cargas CocaCola" },
       { property: "og:description", content: "Painel operacional de faturamento de cargas." },
     ],
   }),
-  component: Faturamento,
+  component: () => <AccountShell><Faturamento /></AccountShell>,
 });
 
 type Pending = { kind: "faturar" | "corte"; load: CargoLoad } | null;

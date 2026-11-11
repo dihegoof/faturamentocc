@@ -231,15 +231,15 @@ export const MB_PRODUCTS: MBProduct[] = [
 export const boxesFor = (p: MBProduct, pallets: number) => Math.round(p.boxesPerPallet * pallets);
 
 function csvCell(v: unknown): string {
-  const s = v == null ? "" : String(v);
-  return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-function csvCell(v: unknown): string {
   let s = v == null ? "" : String(v);
   // Neutraliza fórmulas: prefixa com apóstrofo quando começa com = + - @ ou tab/CR
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+export function toCSV(rows: Record<string, unknown>[]): string {
+  const columns = Object.keys(rows[0] ?? {});
+  return [columns.map(csvCell).join(";"), ...rows.map((row) => columns.map((column) => csvCell(row[column])).join(";"))].join("\n");
 }
 
 export function downloadCSV(name: string, rows: Record<string, unknown>[]) {

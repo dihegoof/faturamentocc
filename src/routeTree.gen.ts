@@ -10,53 +10,75 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as FaturamentoRouteImport } from './routes/faturamento'
-import { Route as RemessaRouteImport } from './routes/remessa'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedFaturamentoRouteImport } from './routes/_authenticated/faturamento'
+import { Route as AuthenticatedRemessaRouteImport } from './routes/_authenticated/remessa'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const FaturamentoRoute = FaturamentoRouteImport.update({
-  id: '/faturamento',
-  path: '/faturamento',
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RemessaRoute = RemessaRouteImport.update({
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedFaturamentoRoute =
+  AuthenticatedFaturamentoRouteImport.update({
+    id: '/faturamento',
+    path: '/faturamento',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRemessaRoute = AuthenticatedRemessaRouteImport.update({
   id: '/remessa',
   path: '/remessa',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/faturamento': typeof FaturamentoRoute
-  '/remessa': typeof RemessaRoute
+  '/auth': typeof AuthRoute
+  '/faturamento': typeof AuthenticatedFaturamentoRoute
+  '/remessa': typeof AuthenticatedRemessaRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/faturamento': typeof FaturamentoRoute
-  '/remessa': typeof RemessaRoute
+  '/auth': typeof AuthRoute
+  '/faturamento': typeof AuthenticatedFaturamentoRoute
+  '/remessa': typeof AuthenticatedRemessaRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/faturamento': typeof FaturamentoRoute
-  '/remessa': typeof RemessaRoute
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/auth': typeof AuthRoute
+  '/_authenticated/faturamento': typeof AuthenticatedFaturamentoRoute
+  '/_authenticated/remessa': typeof AuthenticatedRemessaRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/faturamento' | '/remessa'
+  fullPaths: '/' | '/auth' | '/faturamento' | '/remessa'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/faturamento' | '/remessa'
-  id: '__root__' | '/' | '/faturamento' | '/remessa'
+  to: '/' | '/auth' | '/faturamento' | '/remessa'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/auth'
+    | '/_authenticated/faturamento'
+    | '/_authenticated/remessa'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  FaturamentoRoute: typeof FaturamentoRoute
-  RemessaRoute: typeof RemessaRoute
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AuthRoute: typeof AuthRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -68,27 +90,54 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/faturamento': {
-      id: '/faturamento'
-      path: '/faturamento'
-      fullPath: '/faturamento'
-      preLoaderRoute: typeof FaturamentoRouteImport
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/remessa': {
-      id: '/remessa'
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/faturamento': {
+      id: '/_authenticated/faturamento'
+      path: '/faturamento'
+      fullPath: '/faturamento'
+      preLoaderRoute: typeof AuthenticatedFaturamentoRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/remessa': {
+      id: '/_authenticated/remessa'
       path: '/remessa'
       fullPath: '/remessa'
-      preLoaderRoute: typeof RemessaRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthenticatedRemessaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
   }
 }
 
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedFaturamentoRoute: typeof AuthenticatedFaturamentoRoute
+  AuthenticatedRemessaRoute: typeof AuthenticatedRemessaRoute
+}
+
+const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedFaturamentoRoute: AuthenticatedFaturamentoRoute,
+  AuthenticatedRemessaRoute: AuthenticatedRemessaRoute,
+}
+
+const AuthenticatedRouteRouteWithChildren =
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  FaturamentoRoute: FaturamentoRoute,
-  RemessaRoute: RemessaRoute,
+  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AuthRoute: AuthRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

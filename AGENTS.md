@@ -30,5 +30,7 @@ use the editor.
 <!-- LOVABLE:END -->
 
 ## Project rules
-- Profiles (Faturamento/Remessa) are separate routes with no login; tables allow open access for internal use. Why: requested two work screens without accounts.
+- Use Cloud Auth email accounts and protected routes under `_authenticated`; authorize cargo operations with database roles and active profiles. Why: UI checks alone do not protect operational data.
+- Reserve initial signup in an Auth trigger and create subsequent accounts through admin-authorized server invitations backed by private invitation rows. Why: client metadata and local storage cannot grant roles.
+- Keep client-callable server functions in `src/lib/*.functions.ts` with privileged imports inside authorized handlers. Why: preserve the client/server boundary.
 - Cargo business rules (parser, plate format, MB box math, CT-e e-mail) live in `src/lib/cargo.ts` with tests in `src/lib/cargo.test.ts`. Why: keep rules testable and out of UI.
