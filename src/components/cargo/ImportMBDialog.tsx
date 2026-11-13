@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { isValidPlate, normalizePlate, palletsFor, todayISO } from "@/lib/cargo";
+import { fmtNum, isValidPlate, normalizePlate, palletsFor, todayISO } from "@/lib/cargo";
 import { fetchCatalog, importLoads } from "@/lib/cargo-api";
 
 type Row = { code: string; boxes: string };
@@ -36,7 +36,7 @@ export function ImportMBDialog({ open, onOpenChange }: { open: boolean; onOpenCh
       const { inserted, skipped } = await importLoads([{
         ...form, origin: "MB", destination_code: "", dt: "",
         plate: normalizePlate(form.plate), pallets: totalPallets,
-        products: valid.map((l) => ({ code: l.product!.code, description: l.product!.description, boxes: l.boxes })),
+        products: valid.map((l) => ({ code: l.product!.code, description: l.product!.short_name || l.product!.description, boxes: l.boxes })),
         warnings: isValidPlate(form.plate) ? [] : [`Placa fora do padrão: ${normalizePlate(form.plate)}`],
       }], "MB", "remessa");
       if (skipped.length) toast.warning(`Carga ${form.load_number} já existe nesta data`);
@@ -75,11 +75,11 @@ export function ImportMBDialog({ open, onOpenChange }: { open: boolean; onOpenCh
                   <td className="p-2">
                     <select aria-label="Produto" value={l.code} onChange={(e) => setRows(rows.map((r, j) => (j === i ? { ...r, code: e.target.value } : r)))} className="h-8 w-full rounded-md border bg-background px-2">
                       <option value="">Selecione…</option>
-                      {catalog.map((c) => <option key={c.id} value={c.code}>{c.code} — {c.description}</option>)}
+                      {catalog.map((c) => <option key={c.id} value={c.code}>{c.sap_code || c.code} {c.short_name || c.description}</option>)}
                     </select>
                   </td>
                   <td className="p-2"><Input type="number" min={0} aria-label="Caixas" className="h-8 w-28" value={l.boxes || ""} onChange={(e) => setRows(rows.map((r, j) => (j === i ? { ...r, boxes: e.target.value } : r)))} /></td>
-                  <td className="p-2 text-right font-mono">{l.pallets || "—"}</td>
+                  <td className="p-2 text-right font-mono">{l.pallets ? fmtNum(l.pallets) : "—"}</td>
                   <td className="p-2 text-right">
                     <Button size="icon" variant="ghost" aria-label="Remover linha" onClick={() => setRows(rows.filter((_, j) => j !== i))} disabled={rows.length === 1}><Trash2 className="h-4 w-4" /></Button>
                   </td>
@@ -87,8 +87,8 @@ export function ImportMBDialog({ open, onOpenChange }: { open: boolean; onOpenCh
               ))}
               <tr className="border-t bg-muted/50 font-semibold">
                 <td className="p-2"><Button size="sm" variant="ghost" onClick={() => setRows([...rows, { code: "", boxes: "" }])}><Plus className="h-4 w-4" /> Produto</Button></td>
-                <td className="p-2 font-mono">{totalBoxes} cx</td>
-                <td className="p-2 text-right font-mono">{totalPallets}</td>
+                <td className="p-2 font-mono">{fmtNum(totalBoxes)} cx</td>
+                <td className="p-2 text-right font-mono">{fmtNum(totalPallets)}</td>
                 <td />
               </tr>
             </tbody>

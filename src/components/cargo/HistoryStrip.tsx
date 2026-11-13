@@ -1,5 +1,11 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { cn } from "@/lib/utils";
+import { CalendarDays } from "lucide-react";
+import type { DateRange } from "react-day-picker";
+import { ptBR } from "date-fns/locale";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 
 const SPANS = [3, 5, 15, 30] as const;
 const shift = (iso: string, days: number) => {
@@ -7,8 +13,10 @@ const shift = (iso: string, days: number) => {
   d.setDate(d.getDate() - days);
   return d.toISOString().slice(0, 10);
 };
+const toISO = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const br = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
-/** Spreadsheet-like history: big date title per day, that day's cards side by side below. */
+/** History by predicted day: big date title per day, that day's cards side by side with horizontal scroll. */
 export function HistoryStrip<T extends { load_date: string; id: string }>({
   title,
   items,
@@ -25,10 +33,12 @@ export function HistoryStrip<T extends { load_date: string; id: string }>({
   selector?: boolean;
 }) {
   const base = today ?? new Date().toISOString().slice(0, 10);
-  const [span, setSpan] = useState<number | null>(5);
-  const [from, setFrom] = useState(shift(base, 4));
-  const [to, setTo] = useState(base);
-  const range = span ? { from: shift(base, span - 1), to: base } : { from, to };
+  const [span, setSpan] = useState<string>("5");
+  const [picked, setPicked] = useState<DateRange | undefined>();
+  const custom = span === "custom" && picked?.from;
+  const range = custom
+    ? { from: toISO(picked.from!), to: toISO(picked.to ?? picked.from!) }
+    : { from: shift(base, Number(span === "custom" ? 5 : span) - 1), to: "9999-12-31" };
   const groups = useMemo(() => {
     const m = new Map<string, T[]>();
     items
@@ -43,19 +53,39 @@ export function HistoryStrip<T extends { load_date: string; id: string }>({
         <h2 className="mr-auto font-display text-lg font-bold uppercase">{title}</h2>
         {selector && (
           <>
-            <div className="flex overflow-hidden rounded-md border">
-              {SPANS.map((s) => (
-                <button key={s} type="button" onClick={() => setSpan(s)}
-                  className={cn("px-2.5 py-1 text-xs font-semibold", span === s ? "bg-primary text-primary-foreground" : "hover:bg-muted")}>
-                  {s}d
-                </button>
-              ))}
-            </div>
-            <input type="date" aria-label="De" value={span ? range.from : from} max={to}
-              onChange={(e) => { setSpan(null); setFrom(e.target.value); }} className="h-8 rounded-md border bg-background px-2 text-xs" />
-            <span className="text-xs text-muted-foreground">até</span>
-            <input type="date" aria-label="Até" value={span ? range.to : to} min={from} max={base}
-              onChange={(e) => { setSpan(null); setTo(e.target.value); }} className="h-8 rounded-md border bg-background px-2 text-xs" />
+            <Select value={span} onValueChange={setSpan}>
+              <SelectTrigger className="h-8 w-40 text-xs" aria-label="Período">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SPANS.map((s) => (
+                  <SelectItem key={s} value={String(s)}>
+                    Últimos {s} dias
+                  </SelectItem>
+                ))}
+                <SelectItem value="custom">Período personalizado</SelectItem>
+              </SelectContent>
+            </Select>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 text-xs">
+                  <CalendarDays className="h-4 w-4" />
+                  {custom ? `${br(range.from)} até ${br(range.to)}` : "Data início e fim"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  mode="range"
+                  locale={ptBR}
+                  numberOfMonths={2}
+                  selected={picked}
+                  onSelect={(r) => {
+                    setPicked(r);
+                    setSpan(r?.from ? "custom" : "5");
+                  }}
+                />
+              </PopoverContent>
+            </Popover>
           </>
         )}
       </div>
@@ -66,8 +96,12 @@ export function HistoryStrip<T extends { load_date: string; id: string }>({
               {new Date(day + "T12:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" })}
               <span className="ml-2 text-sm font-normal text-muted-foreground">{list.length} carga(s)</span>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {list.map((i) => <div key={i.id}>{render(i)}</div>)}
+            <div className="flex gap-3 overflow-x-auto pb-3">
+              {list.map((i) => (
+                <div key={i.id} className="w-80 shrink-0">
+                  {render(i)}
+                </div>
+              ))}
             </div>
           </div>
         ))}

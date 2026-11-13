@@ -9,5 +9,8 @@ export const TONE_CLASS: Record<string, string> = {
   "finalizada-sem": "bg-tone-fin-sem text-foreground",
 };
 
-export const toneFor = (l: Pick<CargoLoad, "status" | "has_exit">) =>
-  TONE_CLASS[cardTone(l)] ?? TONE_CLASS["pendente"];
+export const NEUTRAL_TONE = "bg-card text-card-foreground ring-1 ring-border";
+
+/** Only cards imported today are colored; older ones stay neutral unless they have an error. */
+export const toneFor = (l: Pick<CargoLoad, "status" | "has_exit">, colored = true) =>
+  colored || l.status === "corte" ? (TONE_CLASS[cardTone(l)] ?? TONE_CLASS["pendente"]) : NEUTRAL_TONE;

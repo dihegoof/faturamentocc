@@ -5,11 +5,14 @@ import { cn } from "@/lib/utils";
 /** One-click copy for the key fields (prod. id, description, qty, plate, DT, cliente). */
 export function CopyValue({
   value,
+  copyText,
   label,
   className,
   strong = true,
 }: {
   value: string | number | null | undefined;
+  /** What goes to the clipboard when it differs from what is shown. */
+  copyText?: string | undefined;
   label?: string;
   className?: string;
   strong?: boolean;
@@ -22,7 +25,7 @@ export function CopyValue({
       title={`Copiar ${label ?? text}`}
       onClick={(e) => {
         e.stopPropagation();
-        void navigator.clipboard.writeText(text);
+        void navigator.clipboard.writeText(copyText ?? text);
         toast.success(`${label ?? "Valor"} copiado`, { duration: 1200 });
       }}
       className={cn(

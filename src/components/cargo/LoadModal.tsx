@@ -6,12 +6,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fetchClientByCenter, fetchLoadDetail, updateLoad } from "@/lib/cargo-api";
+import { fetchCatalog, fetchClientByCenter, fetchLoadDetail, updateLoad } from "@/lib/cargo-api";
 import {
   CORTE_REASONS,
   cleanDestination,
   dtSuffix,
+  findCatalog,
+  fmtNum,
   joinList,
+  palletsFor,
+  plateClipboard,
+  sapClipboard,
   splitList,
   normalizePlate,
   statusLabel,
@@ -29,10 +34,12 @@ export function LoadModal({
   load,
   onClose,
   profile,
+  loads = [],
 }: {
   load: CargoLoad | null;
   onClose: () => void;
   profile: Profile;
+  loads?: CargoLoad[];
 }) {
   const [logOpen, setLogOpen] = useState(false);
   const [cteOpen, setCteOpen] = useState(false);
@@ -48,6 +55,7 @@ export function LoadModal({
     enabled: !!centerCode,
   });
   const fat = profile === "faturamento";
+  const { data: catalog = [] } = useQuery({ queryKey: ["catalog"], queryFn: fetchCatalog, enabled: fat });
   const totalBoxes = data?.products.reduce((s, p) => s + Number(p.boxes ?? 0), 0) ?? 0;
 
   return (
@@ -94,7 +102,7 @@ export function LoadModal({
                   <CopyValue value={client?.customer_code} label="Código do cliente" />
                 </Field>
                 <Field label="Pallets">
-                  <CopyValue value={Number(load.pallets ?? 0)} label="Pallets" />
+                  <CopyValue value={fmtNum(load.pallets)} label="Pallets" />
                 </Field>
                 <Field label="Transportadora">{load.carrier || "—"}</Field>
                 <Field label="Origem">{load.origin || "—"}</Field>
@@ -111,30 +119,43 @@ export function LoadModal({
                     <table className="w-full text-sm">
                       <thead className="bg-muted text-left text-xs uppercase text-muted-foreground">
                         <tr>
-                          <th className="p-2">ID prod.</th>
+                          <th className="p-2">{fat ? "Cód. SAP" : "ID prod."}</th>
                           <th className="p-2">Descrição</th>
                           <th className="p-2 text-right">Caixas</th>
+                          <th className="p-2 text-right">Paletes</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {data.products.map((p) => (
-                          <tr key={p.id} className="border-t">
-                            <td className="p-2 font-mono">
-                              <CopyValue value={p.code} label="ID do produto" />
-                            </td>
-                            <td className="p-2">
-                              <CopyValue value={p.description} label="Descrição" />
-                            </td>
-                            <td className="p-2 text-right font-mono">
-                              <CopyValue value={Number(p.boxes)} label="Quantidade" />
-                            </td>
-                          </tr>
-                        ))}
+                        {data.products.map((p) => {
+                          const c = findCatalog(catalog, p.code);
+                          const sap = (fat && c?.sap_code) || p.code || "";
+                          const boxes = Number(p.boxes ?? 0);
+                          const pallets = c ? palletsFor(boxes, Number(c.boxes_per_pallet)) : 0;
+                          return (
+                            <tr key={p.id} className="border-t">
+                              <td className="p-2 font-mono">
+                                {fat ? (
+                                  <CopyValue value={sap} copyText={sapClipboard(sap, boxes)} label="Código SAP e caixas" />
+                                ) : (
+                                  <CopyValue value={p.code} label="ID do produto" />
+                                )}
+                              </td>
+                              <td className="p-2">
+                                <CopyValue value={(fat && c?.short_name) || p.description} label="Descrição" strong={false} />
+                              </td>
+                              <td className="p-2 text-right font-mono">
+                                <CopyValue value={fmtNum(boxes)} copyText={String(boxes)} label="Quantidade" />
+                              </td>
+                              <td className="p-2 text-right font-mono">{pallets ? fmtNum(pallets) : "—"}</td>
+                            </tr>
+                          );
+                        })}
                         <tr className="border-t bg-muted/50 font-semibold">
                           <td className="p-2" colSpan={2}>
                             Total
                           </td>
-                          <td className="p-2 text-right font-mono">{totalBoxes}</td>
+                          <td className="p-2 text-right font-mono">{fmtNum(totalBoxes)}</td>
+                          <td className="p-2 text-right font-mono">{fmtNum(load.pallets)}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -186,7 +207,13 @@ export function LoadModal({
           </ol>
         </DialogContent>
       </Dialog>
-      {fat && <CteDialog loads={cteOpen && load ? [load] : null} onClose={() => setCteOpen(false)} />}
+      {fat && (
+        <CteDialog
+          loads={cteOpen && load ? [load] : null}
+          candidates={loads.filter((l) => l.status === "impressa")}
+          onClose={() => setCteOpen(false)}
+        />
+      )}
     </>
   );
 }
@@ -271,7 +298,12 @@ function Correctable({
       {original && original !== load[field] && (
         <s className="font-mono text-xs text-muted-foreground">{original}</s>
       )}
-      <CopyValue value={load[field]} label={label} className="font-mono" />
+      <CopyValue
+        value={load[field]}
+        copyText={field === "plate" ? plateClipboard(load.plate) : undefined}
+        label={label}
+        className="font-mono"
+      />
       {editable && (
         <button type="button" title={`Carta de correção — ${label}`} onClick={() => { setValue(load[field] ?? ""); setEditing(true); }} className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground">
           <Pencil className="h-3 w-3" />
@@ -365,7 +397,7 @@ function StatusSection({ load, onDone }: { load: CargoLoad; onDone: () => void }
 
   const apply = async (c: Choice, reason?: string) => {
     if (c === current && c !== "corte") return;
-    if (c === "finalizada") return setExit(true);
+    if (c === "finalizada") return setExit(false);
     const patch: Partial<CargoLoad> =
       c === "corte"
           ? { status: "corte", corte_reason: reason ?? null }
@@ -407,8 +439,8 @@ function StatusSection({ load, onDone }: { load: CargoLoad; onDone: () => void }
           {([[true, "Com saída"], [false, "Sem saída"]] as const).map(([v, l]) => (
             <button key={l} type="button" onClick={() => void setExit(v)}
               className={cn("rounded-md px-3 py-1.5 font-semibold", v ? "bg-tone-fin-com text-tone-fin-com-foreground" : "bg-tone-fin-sem",
-                (load.has_exit !== false) === v ? "ring-2 ring-foreground" : "opacity-60 hover:opacity-100")}>
-              {(load.has_exit !== false) === v && <Check className="mr-1 inline h-4 w-4" />}{l}
+                (load.has_exit === true) === v ? "ring-2 ring-foreground" : "opacity-60 hover:opacity-100")}>
+              {(load.has_exit === true) === v && <Check className="mr-1 inline h-4 w-4" />}{l}
             </button>
           ))}
           <span className="text-xs text-muted-foreground">Só “com saída” entra na liquidação.</span>

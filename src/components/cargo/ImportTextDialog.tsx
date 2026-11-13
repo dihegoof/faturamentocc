@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { checkBoxes, parseCargoText, formatPlateLine, type ParsedLoad } from "@/lib/cargo";
+import { checkBoxes, fmtNum, parseCargoText, formatPlateLine, type ParsedLoad } from "@/lib/cargo";
 import { fetchCatalog, importLoads } from "@/lib/cargo-api";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -125,8 +125,8 @@ export function ImportTextDialog({
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {l.origin} → {l.destination_code ? `${l.destination_code} ` : ""}
-                    {l.destination} · {l.pallets} pallets · {l.products.length} produto(s) ·{" "}
-                    {l.products.reduce((s, p) => s + p.boxes, 0)} caixas
+                    {l.destination} · {fmtNum(l.pallets)} pallets · {l.products.length} produto(s) ·{" "}
+                    {fmtNum(l.products.reduce((s, p) => s + p.boxes, 0))} caixas
                   </div>
                   {l.warnings.length > 0 && (
                     <ul className="mt-1 space-y-0.5">

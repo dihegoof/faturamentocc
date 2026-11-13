@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Copy, Mail } from "lucide-react";
@@ -5,13 +6,29 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { fetchContacts, updateLoad } from "@/lib/cargo-api";
-import { buildCteEmail, cteRecipients, type CargoLoad } from "@/lib/cargo";
+import { buildCteEmail, carrierMatches, cteRecipients, formatPlateLine, type CargoLoad } from "@/lib/cargo";
 
-export function CteDialog({ loads, onClose }: { loads: CargoLoad[] | null; onClose: () => void }) {
+/** CT-e manual e-mail. Other "impressa" loads of the same carrier can be added to the same e-mail. */
+export function CteDialog({
+  loads,
+  candidates = [],
+  onClose,
+}: {
+  loads: CargoLoad[] | null;
+  candidates?: CargoLoad[];
+  onClose: () => void;
+}) {
   const qc = useQueryClient();
   const { data: contacts = [] } = useQuery({ queryKey: ["contacts"], queryFn: fetchContacts });
-  const list = loads ?? [];
+  const [extra, setExtra] = useState<string[]>([]);
+  const baseIds = (loads ?? []).map((l) => l.id).join(",");
+  useEffect(() => setExtra([]), [baseIds]);
+  const others = loads?.length
+    ? candidates.filter((c) => !loads.some((l) => l.id === c.id) && carrierMatches(c.carrier, loads[0]!.carrier))
+    : [];
+  const list = [...(loads ?? []), ...others.filter((o) => extra.includes(o.id))];
   const email = list.length ? buildCteEmail(list) : { subject: "", body: "" };
   const { to, cc } = cteRecipients(contacts, list[0]?.carrier);
   const carrierCount = list.length ? to.length - contacts.filter((c) => c.kind === "to_fixed").length : 0;
@@ -49,6 +66,23 @@ export function CteDialog({ loads, onClose }: { loads: CargoLoad[] | null; onClo
             <div className="font-semibold">Cc</div>
             <Textarea readOnly rows={2} value={cc.join("; ")} className="text-xs" />
           </div>
+          {others.length > 0 && (
+            <div className="rounded-md border p-2">
+              <div className="mb-1 font-semibold">Juntar outras cargas da {list[0]?.carrier} no mesmo e-mail</div>
+              <div className="space-y-1">
+                {others.map((o) => (
+                  <label key={o.id} className="flex items-center gap-2 text-xs">
+                    <Checkbox
+                      checked={extra.includes(o.id)}
+                      onCheckedChange={(v) => setExtra((x) => (v ? [...x, o.id] : x.filter((id) => id !== o.id)))}
+                    />
+                    <span className="font-semibold">{formatPlateLine(o)}</span>
+                    <span className="text-muted-foreground">Carga {o.load_number}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="font-semibold">Assunto</div>
           <Input readOnly value={email.subject} />
           <div className="font-semibold">Mensagem</div>
@@ -61,7 +95,7 @@ export function CteDialog({ loads, onClose }: { loads: CargoLoad[] | null; onClo
           <Button variant="outline" asChild>
             <a href={mailto}><Mail className="h-4 w-4" /> Abrir no Outlook</a>
           </Button>
-          <Button onClick={markRequested}>Registrar solicitação</Button>
+          <Button onClick={markRequested}>Confirmar que solicitei</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
