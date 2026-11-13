@@ -4,13 +4,42 @@ export const STATUSES: { key: CargoStatus; label: string; tone: string }[] = [
   { key: "pendente", label: "Pendente", tone: "status-pendente" },
   { key: "faturado", label: "Faturado", tone: "status-faturado" },
   { key: "impressa", label: "Impressa ag. CT-e", tone: "status-impressa" },
-  { key: "corte", label: "Corte", tone: "status-corte" },
+  { key: "corte", label: "Erro", tone: "status-corte" },
   { key: "finalizada", label: "Finalizada", tone: "status-finalizada" },
 ];
 
 export const statusLabel = (s: string) => STATUSES.find((x) => x.key === s)?.label ?? s;
 
-export const CORTE_REASONS = ["Aguardando valor no sistema", "Carga com erro"];
+export const CORTE_REASONS = ["Corte", "Aguardando valor no sistema", "Carga com erro"];
+
+/** Card background tone per status; finalizada splits by whether the truck left. */
+export function cardTone(load: Pick<CargoLoad, "status" | "has_exit">): string {
+  if (load.status === "finalizada") return load.has_exit === false ? "finalizada-sem" : "finalizada-com";
+  return load.status;
+}
+
+/** Destination name for Remessa without company prefixes/suffixes such as "SPAL". */
+export function cleanDestination(raw: string | null | undefined): string {
+  return (raw ?? "")
+    .replace(/\b(SPAL|SOLAR|FEMSA|CCSB|CD|CDD)\b/gi, " ")
+    .replace(/^[\s\-–|/.:]+|[\s\-–|/.:]+$/g, "")
+    .replace(/\s*[-–|]\s*[-–|]\s*/g, " - ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+const norm = (v: string | null | undefined) => (v ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/** Search by DT, plate, carrier, carga or NF; matches partial (close) values ignoring punctuation. */
+export function matchesSearch(
+  load: Pick<CargoLoad, "dt" | "plate" | "carrier" | "load_number" | "invoice_numbers" | "destination">,
+  q: string,
+): boolean {
+  const t = norm(q);
+  if (!t) return true;
+  return [load.dt, load.plate, load.carrier, load.load_number, load.invoice_numbers, load.destination]
+    .some((v) => norm(v).includes(t));
+}
 
 export const WAIT_ALERT_MIN = 30;
 
@@ -39,6 +68,9 @@ export interface CargoLoad {
   finalized_at: string | null;
   source: string | null;
   created_at: string;
+  has_exit?: boolean | null;
+  plate_original?: string | null;
+  dt_original?: string | null;
 }
 
 export interface ParsedProduct {

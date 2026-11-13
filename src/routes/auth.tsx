@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getCurrentUser, signIn, homeFor } from "@/lib/auth";
-import { isInitialAdminEmail } from "@/lib/access";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/auth")({
@@ -27,6 +26,8 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [hasAdmin, setHasAdmin] = useState(true);
+  useEffect(() => { void supabase.rpc("platform_has_admin").then(({ data }) => setHasAdmin(data !== false)); }, []);
   useEffect(() => { void getCurrentUser().then((u) => { if (u) void navigate({ to: homeFor(u.profile), replace: true }); }); }, [navigate]);
   async function submit(e: FormEvent) {
     e.preventDefault(); setBusy(true); setMessage(""); setError("");
@@ -36,7 +37,6 @@ export function LoginPage() {
         if (error) throw error;
         setMessage("Se o e-mail estiver cadastrado, você receberá um link para redefinir a senha.");
       } else if (mode === "signup") {
-        if (!isInitialAdminEmail(email)) throw new Error("O cadastro inicial é reservado ao administrador. Peça um convite para acessar.");
         const { error } = await supabase.auth.signUp({ email: email.trim().toLowerCase(), password, options: { emailRedirectTo: `${window.location.origin}/auth` } });
         if (error) throw error;
         setMessage("Confira seu e-mail para confirmar a conta de administrador antes de entrar.");
@@ -54,12 +54,12 @@ export function LoginPage() {
       <form onSubmit={submit} className="w-full max-w-sm space-y-5">
         <div><span className="text-sm font-semibold uppercase text-primary">Operação de cargas</span><h1 className="mt-2 font-display text-4xl font-bold">{mode === "signup" ? "Criar administrador" : mode === "forgot" ? "Recuperar senha" : "Entrar na plataforma"}</h1></div>
         <div className="space-y-2"><Label htmlFor="email">E-mail</Label><Input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-        {mode !== "forgot" && <div className="space-y-2"><Label htmlFor="password">Senha</Label><Input id="password" type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} minLength={8} required value={password} onChange={(e) => setPassword(e.target.value)} /></div>}
+        {mode !== "forgot" && <div className="space-y-2"><Label htmlFor="password">Senha</Label><Input id="password" type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} required value={password} onChange={(e) => setPassword(e.target.value)} /></div>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         {message && <p role="status" className="text-sm text-foreground">{message}</p>}
         <Button type="submit" disabled={busy} className="w-full">{mode === "login" ? <LogIn className="size-4" /> : mode === "signup" ? <UserPlus className="size-4" /> : <Mail className="size-4" />}{busy ? "Aguarde…" : mode === "signup" ? "Criar conta de administrador" : mode === "forgot" ? "Enviar link" : "Entrar"}</Button>
         <div className="flex flex-wrap justify-between gap-2">
-          <Button type="button" variant="link" className="px-0" onClick={() => switchMode(mode === "login" ? "signup" : "login")}>{mode === "login" ? "Primeiro acesso do administrador" : "Voltar para entrar"}</Button>
+          {(mode !== "login" || !hasAdmin) && <Button type="button" variant="link" className="px-0" onClick={() => switchMode(mode === "login" ? "signup" : "login")}>{mode === "login" ? "Primeiro acesso: criar administrador" : "Voltar para entrar"}</Button>}
           {mode === "login" && <Button type="button" variant="link" className="px-0" onClick={() => switchMode("forgot")}>Esqueci a senha</Button>}
         </div>
       </form>

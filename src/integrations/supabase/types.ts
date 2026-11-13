@@ -116,7 +116,9 @@ export type Database = {
           destination: string | null
           destination_code: string | null
           dt: string | null
+          dt_original: string | null
           finalized_at: string | null
+          has_exit: boolean | null
           id: string
           invoice_numbers: string | null
           load_date: string
@@ -125,6 +127,7 @@ export type Database = {
           pallet_order: string | null
           pallets: number | null
           plate: string | null
+          plate_original: string | null
           product_order: string | null
           source: string | null
           status: string
@@ -140,7 +143,9 @@ export type Database = {
           destination?: string | null
           destination_code?: string | null
           dt?: string | null
+          dt_original?: string | null
           finalized_at?: string | null
+          has_exit?: boolean | null
           id?: string
           invoice_numbers?: string | null
           load_date?: string
@@ -149,6 +154,7 @@ export type Database = {
           pallet_order?: string | null
           pallets?: number | null
           plate?: string | null
+          plate_original?: string | null
           product_order?: string | null
           source?: string | null
           status?: string
@@ -164,7 +170,9 @@ export type Database = {
           destination?: string | null
           destination_code?: string | null
           dt?: string | null
+          dt_original?: string | null
           finalized_at?: string | null
+          has_exit?: boolean | null
           id?: string
           invoice_numbers?: string | null
           load_date?: string
@@ -173,6 +181,7 @@ export type Database = {
           pallet_order?: string | null
           pallets?: number | null
           plate?: string | null
+          plate_original?: string | null
           product_order?: string | null
           source?: string | null
           status?: string
@@ -330,6 +339,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      platform_has_admin: { Args: never; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "faturamento" | "remessa"

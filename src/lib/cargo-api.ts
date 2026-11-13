@@ -142,7 +142,7 @@ export async function updateLoad(
 }
 
 /** Inserts parsed loads, skipping those already present (same date + carga). */
-export async function importLoads(loads: ParsedLoad[], source: string) {
+export async function importLoads(loads: ParsedLoad[], source: string, profile: Profile = "remessa") {
   let inserted = 0;
   const skipped: string[] = [];
   for (const l of loads) {
@@ -166,7 +166,7 @@ export async function importLoads(loads: ParsedLoad[], source: string) {
         destination_code: l.destination_code || null,
         carrier: l.carrier,
         plate: l.plate,
-        dt: l.dt,
+        dt: l.dt || null,
         pallets: l.pallets,
         status: "pendente",
         source,
@@ -189,7 +189,7 @@ export async function importLoads(loads: ParsedLoad[], source: string) {
     await logEvent(
       data.id,
       "Carga importada",
-      "remessa",
+      profile,
       `Origem: ${source}${l.warnings.length ? ` · Avisos: ${l.warnings.join("; ")}` : ""}`,
       undefined,
       "pendente",

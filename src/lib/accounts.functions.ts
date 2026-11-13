@@ -14,7 +14,7 @@ async function assertAdmin(context: AuthedContext) {
   if (error || !allowed) throw new Error("Somente o administrador pode gerenciar usuários.");
 }
 
-export const inviteAccount = createServerFn({ method: "POST" })
+export const createAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
     z
@@ -23,6 +23,7 @@ export const inviteAccount = createServerFn({ method: "POST" })
           .string()
           .email()
           .transform((s) => s.toLowerCase()),
+        password: z.string().min(1).max(72),
         display_name: z.string().trim().min(1).max(100),
         role: z.enum(["admin", "faturamento", "remessa"]),
       })
@@ -37,18 +38,21 @@ export const inviteAccount = createServerFn({ method: "POST" })
       .eq("email", data.email)
       .maybeSingle();
     if (existing) throw new Error("Este e-mail já possui uma conta.");
+    // The signup trigger consumes this row to assign name and role.
     const { error: pendingError } = await supabaseAdmin
       .from("account_invitations")
       .upsert({ email: data.email, display_name: data.display_name, role: data.role });
     if (pendingError) throw pendingError;
-    const { getRequest } = await import("@tanstack/react-start/server");
-    const origin = new URL(getRequest().url).origin;
-    const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(data.email, {
-      redirectTo: `${origin}/reset-password`,
+    const { error } = await supabaseAdmin.auth.admin.createUser({
+      email: data.email,
+      password: data.password,
+      email_confirm: true,
     });
-    if (inviteError) {
+    if (error) {
       await supabaseAdmin.from("account_invitations").delete().eq("email", data.email);
-      throw new Error(inviteError.message);
+      throw new Error(
+        /password/i.test(error.message) ? "Senha muito curta: use pelo menos 6 caracteres." : error.message,
+      );
     }
     return { success: true };
   });

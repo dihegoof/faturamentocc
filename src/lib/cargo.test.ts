@@ -102,3 +102,24 @@ describe("cargo rules", () => {
     expect(boxesFor(MB_PRODUCTS[0]!, 2)).toBe(MB_PRODUCTS[0]!.boxesPerPallet * 2);
   });
 });
+
+import { cardTone, cleanDestination, matchesSearch } from "./cargo";
+
+describe("ux rules", () => {
+  it("colors finalizada dark green with exit and light green without", () => {
+    expect(cardTone({ status: "finalizada", has_exit: true })).toBe("finalizada-com");
+    expect(cardTone({ status: "finalizada", has_exit: false })).toBe("finalizada-sem");
+    expect(cardTone({ status: "faturado", has_exit: null })).toBe("faturado");
+  });
+  it("strips SPAL prefix/suffix from destination for remessa", () => {
+    expect(cleanDestination("SPAL - CAMPINAS")).toBe("CAMPINAS");
+    expect(cleanDestination("Jundiaí SPAL")).toBe("Jundiaí");
+  });
+  it("finds loads by partial DT, plate ignoring dash, or carrier", () => {
+    const l = { dt: "106927853", plate: "BDN4G87", carrier: "Ghelere", load_number: "40512", invoice_numbers: null, destination: null };
+    expect(matchesSearch(l, "7853")).toBe(true);
+    expect(matchesSearch(l, "bdn-4g")).toBe(true);
+    expect(matchesSearch(l, "ghel")).toBe(true);
+    expect(matchesSearch(l, "xyz")).toBe(false);
+  });
+});

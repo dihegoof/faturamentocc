@@ -38,8 +38,8 @@ export function ImportMBDialog({
     setForm({ ...form, [k]: e.target.value });
 
   const save = async (): Promise<void> => {
-    if (!form.load_number || !form.dt || !form.plate) {
-      toast.error("Informe carga, DT e placa");
+    if (!form.load_number || !form.plate) {
+      toast.error("Informe carga e placa");
       return;
     }
     if (!totalPallets) {
@@ -62,12 +62,14 @@ export function ImportMBDialog({
             ...form,
             destination_code: "",
             plate: normalizePlate(form.plate),
+            dt: form.dt.replace(/\D/g, ""),
             pallets: totalPallets,
             products,
             warnings,
           },
         ],
         "MB",
+        "faturamento",
       );
       if (skipped.length) toast.warning(`Carga ${form.load_number} já existe nesta data`);
       if (inserted) {
@@ -94,7 +96,7 @@ export function ImportMBDialog({
           {(
             [
               ["load_number", "Nº Carga"],
-              ["dt", "DT"],
+              ["dt", "DT (opcional)"],
               ["plate", "Placa"],
               ["carrier", "Transportadora"],
               ["destination", "Destino"],

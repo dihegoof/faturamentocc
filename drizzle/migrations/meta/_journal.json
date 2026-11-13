@@ -15,6 +15,13 @@
       "when": 1794395998485,
       "tag": "0001_secure_email_accounts_and_cargo_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794587508928,
+      "tag": "0002_cargo_ux_revamp",
+      "breakpoints": true
     }
   ]
 }

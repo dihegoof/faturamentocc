@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { usersQuery, type AppProfile, type AppUser } from "@/lib/auth";
-import { deleteAccount, inviteAccount, updateAccount } from "@/lib/accounts.functions";
+import { createAccount, deleteAccount, updateAccount } from "@/lib/accounts.functions";
 
 export const Route = createFileRoute("/_authenticated/usuarios")({
   head: () => ({ meta: [{ title: "Usuários — Cargas CocaCola" }] }),
@@ -68,7 +68,7 @@ function UsersPage() {
       <div className="flex items-center gap-3">
         <h1 className="text-lg font-semibold">Usuários</h1>
         <Button size="sm" className="ml-auto" onClick={() => setEditing("new")}>
-          <UserPlus className="mr-1 size-4" /> Convidar usuário
+          <UserPlus className="mr-1 size-4" /> Novo usuário
         </Button>
       </div>
 
@@ -170,7 +170,8 @@ function UserDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const invite = useServerFn(inviteAccount);
+  const create = useServerFn(createAccount);
+  const [password, setPassword] = useState("");
   const update = useServerFn(updateAccount);
   const [email, setEmail] = useState(user?.email ?? "");
   const [displayName, setDisplayName] = useState(user?.display_name ?? "");
@@ -189,10 +190,10 @@ function UserDialog({
         await update({ data: { id: user.id, display_name: displayName.trim(), role: profile } });
         toast.success("Usuário atualizado");
       } else {
-        await invite({
-          data: { email: email.trim(), display_name: displayName.trim(), role: profile },
+        await create({
+          data: { email: email.trim(), password, display_name: displayName.trim(), role: profile },
         });
-        toast.success("Convite enviado por e-mail");
+        toast.success("Usuário criado — já pode entrar com e-mail e senha");
       }
       onSaved();
     } catch (err) {
@@ -211,7 +212,7 @@ function UserDialog({
     >
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{user ? "Editar usuário" : "Convidar usuário"}</DialogTitle>
+          <DialogTitle>{user ? "Editar usuário" : "Novo usuário"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={save} className="space-y-3">
           <div className="space-y-1">
@@ -259,16 +260,26 @@ function UserDialog({
             </select>
           </div>
           {!user && (
-            <p className="text-xs text-muted-foreground">
-              O usuário recebe um e-mail com link para definir a senha.
-            </p>
+            <div className="space-y-1">
+              <Label htmlFor="user-password" className="text-xs">
+                Senha
+              </Label>
+              <Input
+                id="user-password"
+                type="text"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="h-9 font-mono"
+              />
+            </div>
           )}
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
             <Button disabled={busy}>
-              {busy ? "Salvando…" : user ? "Salvar" : "Enviar convite"}
+              {busy ? "Salvando…" : user ? "Salvar" : "Criar usuário"}
             </Button>
           </div>
         </form>
