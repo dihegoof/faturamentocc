@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchLoadsRange } from "@/lib/cargo-api";
+import { fetchLoadsSince } from "@/lib/cargo-api";
 import { todayISO } from "@/lib/cargo";
 
 function useCargoRealtime() {
@@ -34,15 +34,18 @@ export function last30(): string[] {
   return out;
 }
 
-/** Loads of the last 30 days, kept live. */
+/** Loads predicted in the last 30 days (or later) plus everything imported today, kept live. */
 export function useLoadsRange() {
   useCargoRealtime();
   const days = useMemo(last30, []);
   const start = days[29] ?? todayISO();
-  const end = days[0] ?? todayISO();
   const query = useQuery({
-    queryKey: ["loads", "range", start, end],
-    queryFn: () => fetchLoadsRange(start, end),
+    queryKey: ["loads", "range", start],
+    queryFn: () => {
+      const midnight = new Date();
+      midnight.setHours(0, 0, 0, 0);
+      return fetchLoadsSince(start, midnight.toISOString());
+    },
   });
   return { ...query, days };
 }
