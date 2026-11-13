@@ -84,9 +84,9 @@
   --color-tone-fin-com: var(--tone-fin-com);
   --color-tone-fin-sem: var(--tone-fin-sem);
   --color-tone-fin-com-foreground: var(--tone-fin-com-foreground);
-  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Roboto Mono", ui-monospace, monospace;
 }
 
 :root {
@@ -198,6 +198,7 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-feature-settings: "tnum" 1, "cv11" 1;
   }
 }
 
