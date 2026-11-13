@@ -1,4 +1,5 @@
-# Correção e acesso
-- [ ] Corrigir páginas duplicadas e erro de compilação.
-- [ ] Implantar login por e-mail com administrador inicial e convite de usuários pelo painel.
-- [ ] Restringir operações por perfil, validar testes e acesso, publicar.
+# Tarefas
+- [x] Primeiro cadastro vira admin; admin cria usuários com senha no painel.
+- [x] Faturamento: busca central, histórico em faixa por dias, Carga MB sem DT, cópia em um clique, título da carga, bloqueio em tempo real, botão Ações, status no card, carta de correção.
+- [x] Remessa: faixa com cargas do dia, destino sem prefixos (SPAL).
+- [x] Cores de card por status, sem pills.
