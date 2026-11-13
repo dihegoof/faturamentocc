@@ -24,6 +24,18 @@ export async function fetchLoadsRange(from: string, to: string): Promise<CargoLo
   return data as CargoLoad[];
 }
 
+/** Loads predicted from `from` on (future dates included) plus anything imported since `createdSince`. */
+export async function fetchLoadsSince(from: string, createdSince: string): Promise<CargoLoad[]> {
+  const { data, error } = await supabase
+    .from("cargo_loads")
+    .select("*, cargo_products(code, description, boxes)")
+    .or(`load_date.gte.${from},created_at.gte.${createdSince}`)
+    .order("load_date", { ascending: false })
+    .limit(1000);
+  if (error) throw error;
+  return data as unknown as CargoLoad[];
+}
+
 export async function searchByPlate(plate: string): Promise<CargoLoad[]> {
   const { data, error } = await supabase
     .from("cargo_loads")
@@ -116,14 +128,14 @@ export async function logEvent(
 
 export async function updateLoad(
   load: CargoLoad,
-  patch: Partial<CargoLoad>,
+  patch: Partial<Omit<CargoLoad, "cargo_products">>,
   event: string,
   profile: Profile,
   details?: string,
 ) {
   const statusChanged = patch.status && patch.status !== load.status;
   const now = new Date().toISOString();
-  const full: Partial<CargoLoad> = { ...patch };
+  const full: Partial<Omit<CargoLoad, "cargo_products">> = { ...patch };
   if (statusChanged) {
     full.status_changed_at = now;
     full.wait_started_at = now;
@@ -205,7 +217,10 @@ export async function fetchCatalog(): Promise<CatalogRow[]> {
   if (error) throw error;
   return data;
 }
-export async function saveCatalog(p: { code: string; description: string; boxes_per_pallet: number }, id?: string) {
+export async function saveCatalog(
+  p: { code: string; description: string; boxes_per_pallet: number; sap_code?: string | null; short_name?: string | null },
+  id?: string,
+) {
   const { error } = id
     ? await supabase.from("products").update(p).eq("id", id)
     : await supabase.from("products").insert(p);

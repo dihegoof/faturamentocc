@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatPlateLine, parseCargoText, palletsFor, buildCteEmail, cteRecipients, checkBoxes, splitList, joinList, cardTone, cleanDestination, matchesSearch } from "./cargo";
+import { formatPlateLine, parseCargoText, palletsFor, buildCteEmail, cteRecipients, checkBoxes, splitList, joinList, cardTone, cleanDestination, matchesSearch , findCatalog, sapClipboard, plateClipboard, fmtNum, formatElapsed, cteTimer } from "./cargo";
 
 describe("cargo rules", () => {
   it("formats plate line as GHE1B55 ED - 9939 | Transportadora", () => {
@@ -147,5 +147,33 @@ describe("cargo rules", () => {
     expect(matchesSearch(l, "bdn-4g")).toBe(true);
     expect(matchesSearch(l, "ghel")).toBe(true);
     expect(matchesSearch(l, "xyz")).toBe(false);
+  });
+});
+
+describe("v3 helpers", () => {
+  const catalog = [
+    { code: "92521", sap_code: "92592", short_name: "1,5S/G", description: "Crystal 1,5L SG", boxes_per_pallet: 112 },
+    { code: "92877", sap_code: "92877", short_name: "COPO50CX", description: "Copo", boxes_per_pallet: 50 },
+  ];
+  it("finds catalog by client code or SAP code", () => {
+    expect(findCatalog(catalog, "92521")?.sap_code).toBe("92592");
+    expect(findCatalog(catalog, "92592")?.code).toBe("92521");
+    expect(findCatalog(catalog, "00000")).toBeUndefined();
+  });
+  it("copies SAP code and boxes as two spreadsheet cells and plate with '  ED'", () => {
+    expect(sapClipboard("92592", 2688)).toBe("92592\t2688");
+    expect(plateClipboard("bdd-3g22")).toBe("BDD3G22  ED");
+  });
+  it("formats numbers and elapsed time in pt-BR", () => {
+    expect(fmtNum(3600)).toBe("3.600");
+    expect(formatElapsed(45_000)).toBe("45s");
+    expect(formatElapsed(12 * 60_000)).toBe("12 min");
+    expect(formatElapsed(125 * 60_000)).toBe("2h 05min");
+  });
+  it("CT-e timer restarts from the request made in the current status", () => {
+    const w = "2026-11-13T10:00:00.000Z";
+    expect(cteTimer({ wait_started_at: w, cte_requested_at: null }).label).toBe("Atualizado há");
+    expect(cteTimer({ wait_started_at: w, cte_requested_at: "2026-11-13T10:05:00.000Z" }).label).toBe("Solicitado há");
+    expect(cteTimer({ wait_started_at: w, cte_requested_at: "2026-11-13T09:00:00.000Z" }).label).toBe("Atualizado há");
   });
 });

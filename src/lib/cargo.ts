@@ -71,6 +71,7 @@ export interface CargoLoad {
   has_exit?: boolean | null;
   plate_original?: string | null;
   dt_original?: string | null;
+  cargo_products?: { code: string | null; description: string | null; boxes: number | null }[];
 }
 
 export interface ParsedProduct {
@@ -482,13 +483,65 @@ export interface CatalogProduct {
   code: string;
   description: string;
   boxes_per_pallet: number;
+  sap_code?: string | null;
+  short_name?: string | null;
+}
+
+/** Catalog entry by the client's code (as imported) or by our SAP code. */
+export function findCatalog<T extends Pick<CatalogProduct, "code" | "sap_code">>(
+  catalog: T[],
+  code: string | null | undefined,
+): T | undefined {
+  const c = (code ?? "").trim().toUpperCase();
+  if (!c) return undefined;
+  return (
+    catalog.find((x) => x.code.toUpperCase() === c) ??
+    catalog.find((x) => (x.sap_code ?? "").toUpperCase() === c)
+  );
+}
+
+/** SAP code + boxes as two side-by-side spreadsheet cells (tab-separated). */
+export const sapClipboard = (sapCode: string, boxes: number) => `${sapCode}\t${Math.round(boxes)}`;
+
+/** Plate as typed in SAP: plate followed by "  ED" (two leading spaces). */
+export const plateClipboard = (plate: string | null | undefined) => `${normalizePlate(plate ?? "")}  ED`;
+
+/** pt-BR number display: 3600 → "3.600", 2.5 → "2,5". */
+export const fmtNum = (n: number | string | null | undefined) =>
+  Number(n ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+
+/** "45s", "12 min", "2h 05min". */
+export function formatElapsed(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}min`;
+}
+
+/** Local calendar day (YYYY-MM-DD) of a timestamp. */
+export function localDay(iso: string): string {
+  const d = new Date(iso);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+/** "Cargas do dia" are the ones imported today, whatever their predicted date. */
+export const importedToday = (l: Pick<CargoLoad, "created_at">, today = todayISO()) =>
+  localDay(l.created_at) === today;
+
+/** CT-e timer on "impressa": counts from the last request if made in this status, else from the status change. */
+export function cteTimer(l: Pick<CargoLoad, "cte_requested_at" | "wait_started_at">) {
+  const requested = !!l.cte_requested_at && l.cte_requested_at >= l.wait_started_at;
+  return requested
+    ? { label: "Solicitado há", since: l.cte_requested_at! }
+    : { label: "Atualizado há", since: l.wait_started_at };
 }
 
 /** Compares pasted boxes with pallets × boxes per pallet from the product catalog. */
 export function checkBoxes(products: ParsedProduct[], catalog: CatalogProduct[]): string[] {
   const out: string[] = [];
   for (const p of products) {
-    const c = catalog.find((x) => x.code.toUpperCase() === p.code.toUpperCase());
+    const c = findCatalog(catalog, p.code);
     if (!c || !p.pallets || !Number(c.boxes_per_pallet)) continue;
     const expected = Math.round(p.pallets * Number(c.boxes_per_pallet));
     if (expected !== p.boxes) out.push(`${p.code}: ${p.boxes} cx, esperado ${expected} (${p.pallets} pal × ${c.boxes_per_pallet})`);
