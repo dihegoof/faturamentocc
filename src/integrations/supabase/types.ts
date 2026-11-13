@@ -301,6 +301,8 @@ export type Database = {
           created_at: string
           description: string
           id: string
+          sap_code: string | null
+          short_name: string | null
         }
         Insert: {
           boxes_per_pallet?: number
@@ -308,6 +310,8 @@ export type Database = {
           created_at?: string
           description: string
           id?: string
+          sap_code?: string | null
+          short_name?: string | null
         }
         Update: {
           boxes_per_pallet?: number
@@ -315,6 +319,8 @@ export type Database = {
           created_at?: string
           description?: string
           id?: string
+          sap_code?: string | null
+          short_name?: string | null
         }
         Relationships: []
       }
