@@ -77,6 +77,7 @@ export interface ParsedProduct {
   code: string;
   description: string;
   boxes: number;
+  pallets?: number;
 }
 
 export interface ParsedLoad {
@@ -464,24 +465,50 @@ export function downloadCSV(name: string, rows: Record<string, unknown>[]) {
   URL.revokeObjectURL(url);
 }
 
+/** CT-e manual e-mail. Several loads of the same carrier share one e-mail. */
 export function buildCteEmail(
-  load: Pick<CargoLoad, "dt" | "plate" | "carrier" | "load_number" | "origin" | "destination">,
+  loads: Pick<CargoLoad, "dt" | "plate" | "carrier">[],
+  greeting = new Date().getHours() < 12 ? "Bom dia" : "Boa tarde",
 ) {
-  const subject = `Solicitação de CT-e — DT ${load.dt ?? "—"} | Placa ${normalizePlate(load.plate ?? "")}`;
+  const carrier = loads[0]?.carrier?.trim() || "—";
+  const plates = loads.map((l) => normalizePlate(l.plate ?? "") || "—");
+  const subject = `Emissão CTe manual - ${carrier.toUpperCase()}  ${plates.join(", ")}`;
+  const data = loads.map((l, i) => `DT: ${l.dt ?? "—"}\nPlaca: ${plates[i]}`).join("\n\n");
   const body = [
-    "Prezados, bom dia/boa tarde.",
+    `${greeting},`,
     "",
-    "Solicitamos a emissão do CT-e para a carga abaixo:",
+    `Por gentileza nos apoiar com o desacordo do transporte abaixo para que a ${carrier} siga com a emissão do CT-e manual, segue dados abaixo:`,
     "",
-    `• Carga: ${load.load_number}`,
-    `• DT: ${load.dt ?? "—"}`,
-    `• Placa: ${normalizePlate(load.plate ?? "")}`,
-    `• Transportadora: ${load.carrier ?? "—"}`,
-    `• Origem/Destino: ${load.origin ?? "—"} → ${load.destination ?? "—"}`,
+    data,
     "",
-    "Lembrete: favor lançar o CT-e no Triangulus assim que emitido.",
-    "",
-    "O veículo está aguardando liberação. Obrigado.",
+    "[Cole aqui a evidência do Triangulus]",
   ].join("\n");
   return { subject, body };
 }
+
+/** NF / ordem lists are stored as comma-separated text. */
+export const splitList = (v: string | null | undefined) =>
+  (v ?? "").split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean);
+export const joinList = (xs: string[]) => (xs.length ? [...new Set(xs)].join(", ") : null);
+
+export interface CatalogProduct {
+  code: string;
+  description: string;
+  boxes_per_pallet: number;
+}
+
+/** Compares pasted boxes with pallets × boxes per pallet from the product catalog. */
+export function checkBoxes(products: ParsedProduct[], catalog: CatalogProduct[]): string[] {
+  const out: string[] = [];
+  for (const p of products) {
+    const c = catalog.find((x) => x.code.toUpperCase() === p.code.toUpperCase());
+    if (!c || !p.pallets || !Number(c.boxes_per_pallet)) continue;
+    const expected = Math.round(p.pallets * Number(c.boxes_per_pallet));
+    if (expected !== p.boxes) out.push(`${p.code}: ${p.boxes} cx, esperado ${expected} (${p.pallets} pal × ${c.boxes_per_pallet})`);
+  }
+  return out;
+}
+
+/** MB: boxes typed per product → pallets from the catalog. */
+export const palletsFor = (boxes: number, perPallet: number) =>
+  perPallet > 0 ? Math.round((boxes / perPallet) * 100) / 100 : 0;

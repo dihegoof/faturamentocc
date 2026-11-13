@@ -263,6 +263,7 @@ export type Database = {
       }
       cte_contacts: {
         Row: {
+          always_cc: boolean
           carrier: string | null
           created_at: string
           email: string
@@ -271,6 +272,7 @@ export type Database = {
           phone: string | null
         }
         Insert: {
+          always_cc?: boolean
           carrier?: string | null
           created_at?: string
           email: string
@@ -279,12 +281,37 @@ export type Database = {
           phone?: string | null
         }
         Update: {
+          always_cc?: boolean
           carrier?: string | null
           created_at?: string
           email?: string
           id?: string
           name?: string
           phone?: string | null
+        }
+        Relationships: []
+      }
+      products: {
+        Row: {
+          boxes_per_pallet: number
+          code: string
+          created_at: string
+          description: string
+          id: string
+        }
+        Insert: {
+          boxes_per_pallet?: number
+          code: string
+          created_at?: string
+          description: string
+          id?: string
+        }
+        Update: {
+          boxes_per_pallet?: number
+          code?: string
+          created_at?: string
+          description?: string
+          id?: string
         }
         Relationships: []
       }
