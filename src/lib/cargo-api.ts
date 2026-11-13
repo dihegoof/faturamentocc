@@ -183,7 +183,7 @@ export async function importLoads(loads: ParsedLoad[], source: string, profile: 
     if (l.products.length) {
       const { error: pe } = await supabase
         .from("cargo_products")
-        .insert(l.products.map((p) => ({ ...p, load_id: data.id })));
+        .insert(l.products.map((p) => ({ code: p.code, description: p.description, boxes: p.boxes, load_id: data.id })));
       if (pe) throw pe;
     }
     await logEvent(
@@ -197,4 +197,34 @@ export async function importLoads(loads: ParsedLoad[], source: string, profile: 
     inserted++;
   }
   return { inserted, skipped };
+}
+
+export type CatalogRow = Database["public"]["Tables"]["products"]["Row"];
+export async function fetchCatalog(): Promise<CatalogRow[]> {
+  const { data, error } = await supabase.from("products").select("*").order("code");
+  if (error) throw error;
+  return data;
+}
+export async function saveCatalog(p: { code: string; description: string; boxes_per_pallet: number }, id?: string) {
+  const { error } = id
+    ? await supabase.from("products").update(p).eq("id", id)
+    : await supabase.from("products").insert(p);
+  if (error) throw error;
+}
+export async function deleteCatalog(id: string) {
+  const { error } = await supabase.from("products").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export type ContactKind = "to_fixed" | "cc_fixed" | "carrier";
+export async function saveContact(c: { kind: ContactKind; email: string; carrier?: string | null }) {
+  const name = c.kind === "carrier" ? (c.carrier ?? "").toUpperCase() : c.kind === "to_fixed" ? "Torre" : "Cópia fixa";
+  const { error } = await supabase.from("cte_contacts").insert({
+    name, kind: c.kind, email: c.email.trim(), carrier: c.kind === "carrier" ? name : null,
+  });
+  if (error) throw error;
+}
+export async function deleteContact(id: string) {
+  const { error } = await supabase.from("cte_contacts").delete().eq("id", id);
+  if (error) throw error;
 }

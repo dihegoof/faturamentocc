@@ -417,6 +417,7 @@ export function parsePositionalRows(lines: string[], fallbackDate = todayISO()):
       code: /^\d{1,3}(\.\d{3})+$/.test(code) ? code.replace(/\./g, "") : code,
       description,
       boxes: num(boxes),
+      pallets: num(pallets),
     });
     load.pallets += num(pallets);
   }
@@ -425,20 +426,6 @@ export function parsePositionalRows(lines: string[], fallbackDate = todayISO()):
   return loads;
 }
 
-export interface MBProduct {
-  code: string;
-  description: string;
-  boxesPerPallet: number;
-}
-
-export const MB_PRODUCTS: MBProduct[] = [
-  { code: "CRY500", description: "Crystal 500ml", boxesPerPallet: 98 },
-  { code: "CRY1500", description: "Crystal 1,5L", boxesPerPallet: 72 },
-  { code: "CRYCOPO", description: "Crystal Copo", boxesPerPallet: 120 },
-  { code: "CRY5L", description: "Crystal 5L", boxesPerPallet: 60 },
-];
-
-export const boxesFor = (p: MBProduct, pallets: number) => Math.round(p.boxesPerPallet * pallets);
 
 function csvCell(v: unknown): string {
   let s = v == null ? "" : String(v);
@@ -512,3 +499,22 @@ export function checkBoxes(products: ParsedProduct[], catalog: CatalogProduct[])
 /** MB: boxes typed per product → pallets from the catalog. */
 export const palletsFor = (boxes: number, perPallet: number) =>
   perPallet > 0 ? Math.round((boxes / perPallet) * 100) / 100 : 0;
+
+/** Contacts registered as e.g. "RITMO" match a load carrier like "Ritmo Logística". */
+export function carrierMatches(contactCarrier: string | null | undefined, loadCarrier: string | null | undefined) {
+  const n = (v: string | null | undefined) =>
+    (v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const a = n(contactCarrier), b = n(loadCarrier);
+  return !!a && !!b && (b.includes(a) || a.includes(b));
+}
+
+/** Para = Torre + transportadora; Cc = cópia fixa do setor. */
+export function cteRecipients(
+  contacts: { kind: string; email: string; carrier: string | null }[],
+  loadCarrier: string | null | undefined,
+) {
+  return {
+    to: contacts.filter((c) => c.kind === "to_fixed" || (c.kind === "carrier" && carrierMatches(c.carrier, loadCarrier))).map((c) => c.email),
+    cc: contacts.filter((c) => c.kind === "cc_fixed").map((c) => c.email),
+  };
+}

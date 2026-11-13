@@ -84,8 +84,8 @@
   --color-tone-fin-com: var(--tone-fin-com);
   --color-tone-fin-sem: var(--tone-fin-sem);
   --color-tone-fin-com-foreground: var(--tone-fin-com-foreground);
-  --font-sans: "Barlow", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Barlow Condensed", "Barlow", sans-serif;
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Check, History, Mail, Pencil, Save, X } from "lucide-react";
+import { Check, History, Mail, Pencil, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,8 @@ import {
   CORTE_REASONS,
   cleanDestination,
   dtSuffix,
+  joinList,
+  splitList,
   normalizePlate,
   statusLabel,
   type CargoLoad,
@@ -184,7 +186,7 @@ export function LoadModal({
           </ol>
         </DialogContent>
       </Dialog>
-      {fat && <CteDialog load={cteOpen ? load : null} onClose={() => setCteOpen(false)} />}
+      {fat && <CteDialog loads={cteOpen && load ? [load] : null} onClose={() => setCteOpen(false)} />}
     </>
   );
 }
@@ -279,72 +281,69 @@ function Correctable({
   );
 }
 
+/** Pills: type or paste, Enter / comma / leaving the field adds it and saves right away. */
+function PillInput({ label, value, onSave }: { label: string; value: string | null; onSave: (v: string | null) => Promise<void> }) {
+  const items = splitList(value);
+  const [draft, setDraft] = useState("");
+  const commit = async (next: string[]) => {
+    try { await onSave(joinList(next)); } catch (e) { toast.error((e as Error).message); }
+  };
+  const add = () => {
+    const extra = splitList(draft);
+    setDraft("");
+    if (extra.some((x) => !items.includes(x))) void commit([...items, ...extra]);
+  };
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs">{label}</Label>
+      <div className="flex min-h-9 flex-wrap items-center gap-1 rounded-md border bg-background px-1.5 py-1">
+        {items.map((it) => (
+          <span key={it} className="flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 font-mono text-xs font-semibold">
+            {it}
+            <button type="button" aria-label={`Remover ${it}`} onClick={() => void commit(items.filter((x) => x !== it))}><X className="h-3 w-3" /></button>
+          </span>
+        ))}
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); add(); } }}
+          onPaste={(e) => { e.preventDefault(); const t = e.clipboardData.getData("text"); const extra = splitList(t); if (extra.length) void commit([...items, ...extra.filter((x) => !items.includes(x))]); }}
+          onBlur={add}
+          className="min-w-16 flex-1 bg-transparent px-1 text-sm outline-none"
+          aria-label={label}
+        />
+      </div>
+    </div>
+  );
+}
+
 function OrdersSection({ load }: { load: CargoLoad }) {
   const qc = useQueryClient();
-  const [productOrder, setProductOrder] = useState(load.product_order ?? "");
-  const [palletOrder, setPalletOrder] = useState(load.pallet_order ?? "");
-  const [nf, setNf] = useState(load.invoice_numbers ?? "");
-  const [saving, setSaving] = useState(false);
-  const dirty =
-    productOrder.trim() !== (load.product_order ?? "") ||
-    palletOrder.trim() !== (load.pallet_order ?? "") ||
-    nf.trim() !== (load.invoice_numbers ?? "");
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      const patch = {
-        product_order: productOrder.trim() || null,
-        pallet_order: palletOrder.trim() || null,
-        invoice_numbers: nf.trim() || null,
-      };
-      await updateLoad(load, patch, "Ordens / notas registradas", "faturamento",
-        `Produto: ${patch.product_order ?? "—"} · Palete: ${patch.pallet_order ?? "—"} · NF: ${patch.invoice_numbers ?? "—"}`);
-      qc.invalidateQueries({ queryKey: ["loads"] });
-      qc.invalidateQueries({ queryKey: ["load-detail", load.id] });
-      toast.success("Salvo");
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setSaving(false);
-    }
+  const save = (field: "product_order" | "pallet_order" | "invoice_numbers", label: string) => async (v: string | null) => {
+    if (v === (load[field] ?? null)) return;
+    await updateLoad(load, { [field]: v } as Partial<CargoLoad>, `${label} atualizada`, "faturamento", v ?? "—");
+    qc.invalidateQueries({ queryKey: ["loads"] });
+    qc.invalidateQueries({ queryKey: ["load-detail", load.id] });
   };
-
   return (
-    <section className="grid gap-3 rounded-md border p-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
-      {(
-        [
-          ["Ordem produto", productOrder, setProductOrder],
-          ["Ordem palete", palletOrder, setPalletOrder],
-          ["Notas (NF)", nf, setNf],
-        ] as const
-      ).map(([l, v, set]) => (
-        <div key={l} className="space-y-1">
-          <Label className="text-xs">{l}</Label>
-          <Input value={v} onChange={(e) => set(e.target.value)} />
-        </div>
-      ))}
-      <Button onClick={save} disabled={saving || !dirty}>
-        <Save className="h-4 w-4" /> Salvar
-      </Button>
+    <section className="grid gap-3 rounded-md border p-3 sm:grid-cols-3">
+      <PillInput label="Ordem produto" value={load.product_order} onSave={save("product_order", "Ordem produto")} />
+      <PillInput label="Ordem palete" value={load.pallet_order} onSave={save("pallet_order", "Ordem palete")} />
+      <PillInput label="Notas (NF) — opcional" value={load.invoice_numbers} onSave={save("invoice_numbers", "Notas")} />
     </section>
   );
 }
 
-type Choice = "pendente" | "faturado" | "impressa" | "corte" | "fin-com" | "fin-sem";
+type Choice = "pendente" | "faturado" | "impressa" | "corte" | "finalizada";
 const CHOICES: { key: Choice; label: string; tone: string }[] = [
   { key: "pendente", label: "Pendente", tone: "bg-tone-pendente" },
   { key: "faturado", label: "Faturada", tone: "bg-tone-faturado" },
   { key: "impressa", label: "Imp. ag. CT-e", tone: "bg-tone-impressa" },
   { key: "corte", label: "Erro", tone: "bg-tone-corte" },
-  { key: "fin-com", label: "Finalizada · com saída", tone: "bg-tone-fin-com text-tone-fin-com-foreground" },
-  { key: "fin-sem", label: "Finalizada · sem saída", tone: "bg-tone-fin-sem" },
+  { key: "finalizada", label: "Finalizada", tone: "bg-tone-fin-com text-tone-fin-com-foreground" },
 ];
 
-function currentChoice(l: CargoLoad): Choice {
-  if (l.status === "finalizada") return l.has_exit === false ? "fin-sem" : "fin-com";
-  return l.status as Choice;
-}
+const currentChoice = (l: CargoLoad) => l.status as Choice;
 
 function StatusSection({ load, onDone }: { load: CargoLoad; onDone: () => void }) {
   const qc = useQueryClient();
@@ -352,12 +351,23 @@ function StatusSection({ load, onDone }: { load: CargoLoad; onDone: () => void }
   const [errorMode, setErrorMode] = useState(false);
   const [other, setOther] = useState("");
 
+  const setExit = async (exit: boolean) => {
+    if (load.status === "finalizada" && load.has_exit === exit) return;
+    try {
+      await updateLoad(load, { status: "finalizada", has_exit: exit, corte_reason: null },
+        exit ? "Finalizada — com saída" : "Finalizada — sem saída", "faturamento");
+      qc.invalidateQueries({ queryKey: ["loads"] });
+      toast.success(`Carga ${load.load_number}: finalizada ${exit ? "com" : "sem"} saída`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
   const apply = async (c: Choice, reason?: string) => {
     if (c === current && c !== "corte") return;
+    if (c === "finalizada") return setExit(true);
     const patch: Partial<CargoLoad> =
-      c === "fin-com" || c === "fin-sem"
-        ? { status: "finalizada", has_exit: c === "fin-com", corte_reason: null }
-        : c === "corte"
+      c === "corte"
           ? { status: "corte", corte_reason: reason ?? null }
           : { status: c, corte_reason: null, has_exit: null };
     if (c === "impressa" && !load.cte_received_at) patch.cte_received_at = new Date().toISOString();
@@ -374,8 +384,7 @@ function StatusSection({ load, onDone }: { load: CargoLoad; onDone: () => void }
 
   return (
     <section className="space-y-2 border-t pt-3">
-      <h3 className="font-display text-lg font-bold">Status da carga</h3>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         {CHOICES.map((c) => (
           <button
             key={c.key}
@@ -392,6 +401,19 @@ function StatusSection({ load, onDone }: { load: CargoLoad; onDone: () => void }
           </button>
         ))}
       </div>
+      {current === "finalizada" && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm">
+          <span className="font-semibold">Saiu da unidade?</span>
+          {([[true, "Com saída"], [false, "Sem saída"]] as const).map(([v, l]) => (
+            <button key={l} type="button" onClick={() => void setExit(v)}
+              className={cn("rounded-md px-3 py-1.5 font-semibold", v ? "bg-tone-fin-com text-tone-fin-com-foreground" : "bg-tone-fin-sem",
+                (load.has_exit !== false) === v ? "ring-2 ring-foreground" : "opacity-60 hover:opacity-100")}>
+              {(load.has_exit !== false) === v && <Check className="mr-1 inline h-4 w-4" />}{l}
+            </button>
+          ))}
+          <span className="text-xs text-muted-foreground">Só “com saída” entra na liquidação.</span>
+        </div>
+      )}
       {errorMode && (
         <div className="space-y-2 rounded-md border border-destructive/40 p-3">
           <p className="text-sm font-semibold">Motivo do erro (aparece para a Remessa):</p>

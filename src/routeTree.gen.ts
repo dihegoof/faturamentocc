@@ -15,6 +15,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthenticatedClientesRouteImport } from './routes/_authenticated/clientes'
 import { Route as AuthenticatedFaturamentoRouteImport } from './routes/_authenticated/faturamento'
+import { Route as AuthenticatedPainelRouteImport } from './routes/_authenticated/painel'
 import { Route as AuthenticatedRemessaRouteImport } from './routes/_authenticated/remessa'
 import { Route as AuthenticatedUsuariosRouteImport } from './routes/_authenticated/usuarios'
 
@@ -48,6 +49,11 @@ const AuthenticatedFaturamentoRoute =
     path: '/faturamento',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedPainelRoute = AuthenticatedPainelRouteImport.update({
+  id: '/painel',
+  path: '/painel',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedRemessaRoute = AuthenticatedRemessaRouteImport.update({
   id: '/remessa',
   path: '/remessa',
@@ -65,6 +71,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/clientes': typeof AuthenticatedClientesRoute
   '/faturamento': typeof AuthenticatedFaturamentoRoute
+  '/painel': typeof AuthenticatedPainelRoute
   '/remessa': typeof AuthenticatedRemessaRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
 }
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/clientes': typeof AuthenticatedClientesRoute
   '/faturamento': typeof AuthenticatedFaturamentoRoute
+  '/painel': typeof AuthenticatedPainelRoute
   '/remessa': typeof AuthenticatedRemessaRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
 }
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/_authenticated/clientes': typeof AuthenticatedClientesRoute
   '/_authenticated/faturamento': typeof AuthenticatedFaturamentoRoute
+  '/_authenticated/painel': typeof AuthenticatedPainelRoute
   '/_authenticated/remessa': typeof AuthenticatedRemessaRoute
   '/_authenticated/usuarios': typeof AuthenticatedUsuariosRoute
 }
@@ -96,6 +105,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/clientes'
     | '/faturamento'
+    | '/painel'
     | '/remessa'
     | '/usuarios'
   fileRoutesByTo: FileRoutesByTo
@@ -105,6 +115,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/clientes'
     | '/faturamento'
+    | '/painel'
     | '/remessa'
     | '/usuarios'
   id:
@@ -115,6 +126,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/_authenticated/clientes'
     | '/_authenticated/faturamento'
+    | '/_authenticated/painel'
     | '/_authenticated/remessa'
     | '/_authenticated/usuarios'
   fileRoutesById: FileRoutesById
@@ -170,6 +182,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFaturamentoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/painel': {
+      id: '/_authenticated/painel'
+      path: '/painel'
+      fullPath: '/painel'
+      preLoaderRoute: typeof AuthenticatedPainelRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/remessa': {
       id: '/_authenticated/remessa'
       path: '/remessa'
@@ -190,6 +209,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedClientesRoute: typeof AuthenticatedClientesRoute
   AuthenticatedFaturamentoRoute: typeof AuthenticatedFaturamentoRoute
+  AuthenticatedPainelRoute: typeof AuthenticatedPainelRoute
   AuthenticatedRemessaRoute: typeof AuthenticatedRemessaRoute
   AuthenticatedUsuariosRoute: typeof AuthenticatedUsuariosRoute
 }
@@ -197,6 +217,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedClientesRoute: AuthenticatedClientesRoute,
   AuthenticatedFaturamentoRoute: AuthenticatedFaturamentoRoute,
+  AuthenticatedPainelRoute: AuthenticatedPainelRoute,
   AuthenticatedRemessaRoute: AuthenticatedRemessaRoute,
   AuthenticatedUsuariosRoute: AuthenticatedUsuariosRoute,
 }

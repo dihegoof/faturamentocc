@@ -41,17 +41,25 @@ export function AccountShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-background">
       <header className="flex flex-wrap items-center gap-3 border-b bg-sidebar px-4 py-2 text-sidebar-foreground">
         <span className="font-semibold">{user.display_name || user.email}</span>
-        <nav className="flex flex-wrap gap-3 text-sm">
-          {(user.profile === "admin" || user.profile === "faturamento") && (
-            <Link to="/faturamento">Faturamento</Link>
-          )}
-          {(user.profile === "admin" || user.profile === "faturamento") && (
-            <Link to="/clientes">Clientes</Link>
-          )}
-          {(user.profile === "admin" || user.profile === "remessa") && (
-            <Link to="/remessa">Remessa</Link>
-          )}
-          {user.profile === "admin" && <Link to="/usuarios">Usuários</Link>}
+        <nav className="flex flex-wrap gap-1 text-sm">
+          {(
+            [
+              ["/faturamento", "Faturamento", user.profile !== "remessa"],
+              ["/remessa", "Remessa", user.profile !== "faturamento"],
+              ["/painel", "Painel", user.profile !== "remessa"],
+            ] as const
+          )
+            .filter(([, , show]) => show)
+            .map(([to, label]) => (
+              <Link
+                key={to}
+                to={to}
+                className="rounded px-2.5 py-1 hover:bg-sidebar-accent"
+                activeProps={{ className: "bg-sidebar-accent font-semibold" }}
+              >
+                {label}
+              </Link>
+            ))}
         </nav>
         <Button variant="ghost" size="sm" className="ml-auto" onClick={logout}>
           <LogOut className="size-4" />

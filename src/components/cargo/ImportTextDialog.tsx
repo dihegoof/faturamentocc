@@ -11,15 +11,9 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { parseCargoText, formatPlateLine, type ParsedLoad } from "@/lib/cargo";
-import { importLoads } from "@/lib/cargo-api";
+import { checkBoxes, parseCargoText, formatPlateLine, type ParsedLoad } from "@/lib/cargo";
+import { fetchCatalog, importLoads } from "@/lib/cargo-api";
 import { supabase } from "@/integrations/supabase/client";
-
-const SAMPLE = [
-  "11/11/2026\t1\tB0AC\tBFBP\tFrancisco Beltrão\t92521\tCRYSTAL 1,5L SEM GÁS 06UN\t1.008\t9\tRitmo\tBDD3G22\t106927853",
-  "-\t-\t-\t-\t-\t92522\tCRYSTAL 500ML COM GÁS 12UN\t1.344\t8\t-\t-\t-",
-  "11/11/2026\t14\tB0AC\tBFCM\tCD Bauru\t92520\tCRYSTAL 1,5L COM GÁS 06UN\t3.640\t26\tRitmo\tOBL8E22\t106927866",
-].join("\n");
 
 export function ImportTextDialog({
   open,
@@ -45,6 +39,8 @@ export function ImportTextDialog({
         "load_number",
         loads.map((l) => l.load_number),
       );
+    const catalog = await fetchCatalog().catch(() => []);
+    loads.forEach((l) => l.warnings.push(...checkBoxes(l.products, catalog.map((c) => ({ ...c, boxes_per_pallet: Number(c.boxes_per_pallet) })))));
     const existing = new Set((data ?? []).map((d) => `${d.load_date}|${d.load_number}`));
     setReview(
       loads.map((l) => ({ ...l, duplicate: existing.has(`${l.load_date}|${l.load_number}`) })),
@@ -83,23 +79,15 @@ export function ImportTextDialog({
         </DialogHeader>
         {!review ? (
           <>
-            <p className="text-sm text-muted-foreground">
-              Cole as linhas como vêm da planilha, sem cabeçalho: Data, Nº Carga, Origem, Sigla
-              destino, Destino, SKU, Descrição, Caixas, Pallets, Transportadora, Placa, Transporte
-              (DT). Uma linha por produto; nas linhas de baixo da mesma carga os dados podem se
-              repetir ou vir com "-".
-            </p>
+            <p className="text-sm text-muted-foreground">Insira as cargas — cole as linhas da planilha.</p>
             <Textarea
               rows={12}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder={SAMPLE}
+              placeholder="Insira as cargas…"
               className="font-mono text-xs"
             />
             <DialogFooter>
-              <Button variant="ghost" onClick={() => setText(SAMPLE)}>
-                Usar exemplo
-              </Button>
               <Button onClick={analyze} disabled={!text.trim()}>
                 Analisar
               </Button>

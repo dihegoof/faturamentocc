@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatPlateLine, parseCargoText, boxesFor, MB_PRODUCTS } from "./cargo";
+import { formatPlateLine, parseCargoText, palletsFor, buildCteEmail, cteRecipients, checkBoxes, splitList, joinList, cardTone, cleanDestination, matchesSearch } from "./cargo";
 
 describe("cargo rules", () => {
   it("formats plate line as GHE1B55 ED - 9939 | Transportadora", () => {
@@ -59,7 +59,7 @@ describe("cargo rules", () => {
       dt: "106927866",
       pallets: 26,
     });
-    expect(bauru!.products).toEqual([
+    expect(bauru!.products).toMatchObject([
       { code: "92520", description: "CRYSTAL 1,5L COM GÁS 06UN", boxes: 3640 },
     ]);
   });
@@ -98,14 +98,40 @@ describe("cargo rules", () => {
     });
   });
 
-  it("calculates MB boxes from pallets", () => {
-    expect(boxesFor(MB_PRODUCTS[0]!, 2)).toBe(MB_PRODUCTS[0]!.boxesPerPallet * 2);
+  it("calculates MB pallets from typed boxes", () => {
+    expect(palletsFor(196, 98)).toBe(2);
+    expect(palletsFor(36, 72)).toBe(0.5);
   });
-});
 
-import { cardTone, cleanDestination, matchesSearch } from "./cargo";
+  it("builds the CT-e manual subject with carrier and plates separated by comma", () => {
+    const e = buildCteEmail([{ carrier: "Ghelere", plate: "BDN-4G87", dt: "400106923822" }, { carrier: "Ghelere", plate: "FED5B87", dt: "1" }], "Boa tarde");
+    expect(e.subject).toBe("Emissão CTe manual - GHELERE  BDN4G87, FED5B87");
+    expect(e.body).toContain("para que a Ghelere siga com a emissão do CT-e manual");
+    expect(e.body).toContain("DT: 400106923822\nPlaca: BDN4G87");
+    expect(e.body).toContain("[Cole aqui a evidência do Triangulus]");
+  });
 
-describe("ux rules", () => {
+  it("sends CT-e to Torre + carrier and copies the fixed team", () => {
+    const r = cteRecipients([
+      { kind: "to_fixed", email: "torre@kof.com", carrier: null },
+      { kind: "cc_fixed", email: "fiscal@kof.com", carrier: null },
+      { kind: "carrier", email: "a@ritmolog.com.br", carrier: "RITMO" },
+      { kind: "carrier", email: "b@ghelere.com.br", carrier: "GHELERE" },
+    ], "Ritmo Logística");
+    expect(r.to).toEqual(["torre@kof.com", "a@ritmolog.com.br"]);
+    expect(r.cc).toEqual(["fiscal@kof.com"]);
+  });
+
+  it("flags boxes that don't match pallets × boxes per pallet", () => {
+    const cat = [{ code: "92521", description: "x", boxes_per_pallet: 112 }];
+    expect(checkBoxes([{ code: "92521", description: "x", boxes: 1008, pallets: 9 }], cat)).toEqual([]);
+    expect(checkBoxes([{ code: "92521", description: "x", boxes: 1000, pallets: 9 }], cat)).toHaveLength(1);
+  });
+
+  it("keeps NF numbers as unique pills", () => {
+    expect(joinList(splitList("123, 456 123"))).toBe("123, 456");
+  });
+
   it("colors finalizada dark green with exit and light green without", () => {
     expect(cardTone({ status: "finalizada", has_exit: true })).toBe("finalizada-com");
     expect(cardTone({ status: "finalizada", has_exit: false })).toBe("finalizada-sem");
