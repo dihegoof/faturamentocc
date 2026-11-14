@@ -126,31 +126,40 @@ export async function logEvent(
   });
 }
 
-export async function updateLoad(
-  load: CargoLoad,
-  patch: Partial<Omit<CargoLoad, "cargo_products">>,
-  event: string,
-  profile: Profile,
-  details?: string,
-) {
-  const statusChanged = patch.status && patch.status !== load.status;
-  const now = new Date().toISOString();
-  const full: Partial<Omit<CargoLoad, "cargo_products">> = { ...patch };
-  if (statusChanged) {
+export type LoadPatch = Partial<Omit<CargoLoad, "cargo_products">>;
+
+/** Patch actually written: a status change also restarts the timers. */
+export function buildLoadPatch(load: CargoLoad, patch: LoadPatch): LoadPatch {
+  const full: LoadPatch = { ...patch };
+  if (patch.status && patch.status !== load.status) {
+    const now = new Date().toISOString();
     full.status_changed_at = now;
     full.wait_started_at = now;
     if (patch.status === "finalizada") full.finalized_at = now;
   }
+  return full;
+}
+
+export async function updateLoad(
+  load: CargoLoad,
+  patch: LoadPatch,
+  event: string,
+  profile: Profile,
+  details?: string,
+  full: LoadPatch = buildLoadPatch(load, patch),
+) {
+  const statusChanged = !!patch.status && patch.status !== load.status;
   const { error } = await supabase.from("cargo_loads").update(full).eq("id", load.id);
   if (error) throw error;
-  await logEvent(
+  // History is not awaited so the action finishes on the single update round trip.
+  void logEvent(
     load.id,
     event,
     profile,
     details,
     statusChanged ? load.status : undefined,
     statusChanged ? (patch.status as CargoStatus) : undefined,
-  );
+  ).catch(() => undefined);
 }
 
 /** Inserts parsed loads, skipping those already present (same date + carga). */
