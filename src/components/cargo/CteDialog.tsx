@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Copy, Mail } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { fetchContacts, updateLoad } from "@/lib/cargo-api";
+import { fetchContacts } from "@/lib/cargo-api";
+import { useUpdateLoad } from "@/hooks/use-loads";
 import { buildCteEmail, carrierMatches, cteRecipients, formatPlateLine, type CargoLoad } from "@/lib/cargo";
 
 /** CT-e manual e-mail. Other "impressa" loads of the same carrier can be added to the same e-mail. */
@@ -20,7 +21,7 @@ export function CteDialog({
   candidates?: CargoLoad[];
   onClose: () => void;
 }) {
-  const qc = useQueryClient();
+  const update = useUpdateLoad();
   const { data: contacts = [] } = useQuery({ queryKey: ["contacts"], queryFn: fetchContacts });
   const [extra, setExtra] = useState<string[]>([]);
   const baseIds = (loads ?? []).map((l) => l.id).join(",");
@@ -34,16 +35,13 @@ export function CteDialog({
   const carrierCount = list.length ? to.length - contacts.filter((c) => c.kind === "to_fixed").length : 0;
   const mailto = `mailto:${to.join(";")}?cc=${encodeURIComponent(cc.join(";"))}&subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`;
 
-  const markRequested = async () => {
-    try {
-      const now = new Date().toISOString();
-      for (const l of list) await updateLoad(l, { cte_requested_at: now }, "CT-e manual solicitado", "faturamento", email.subject);
-      qc.invalidateQueries({ queryKey: ["loads"] });
-      toast.success("Solicitação registrada");
-      onClose();
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
+  const markRequested = () => {
+    const now = new Date().toISOString();
+    Promise.all(
+      list.map((l) => update(l, { cte_requested_at: now }, "CT-e manual solicitado", "faturamento", email.subject)),
+    ).catch((e: Error) => toast.error(e.message));
+    toast.success("Solicitação registrada");
+    onClose();
   };
 
   return (

@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Check, History, Mail, Pencil, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fetchCatalog, fetchClientByCenter, fetchLoadDetail, updateLoad } from "@/lib/cargo-api";
+import { fetchCatalog, fetchClientByCenter, fetchLoadDetail } from "@/lib/cargo-api";
+import { useUpdateLoad } from "@/hooks/use-loads";
 import {
   CORTE_REASONS,
   cleanDestination,
@@ -258,31 +259,27 @@ function Correctable({
   field: "plate" | "dt";
   editable: boolean;
 }) {
-  const qc = useQueryClient();
+  const update = useUpdateLoad();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(load[field] ?? "");
   const origKey = field === "plate" ? "plate_original" : "dt_original";
   const original = load[origKey];
   const label = field === "plate" ? "Placa" : "DT";
 
-  const save = async () => {
+  const save = () => {
     const next = field === "plate" ? normalizePlate(value) : value.replace(/\D/g, "");
-    if (!next || next === load[field]) return setEditing(false);
-    try {
-      await updateLoad(
-        load,
-        { [field]: next, [origKey]: original ?? load[field] } as Partial<CargoLoad>,
-        `Carta de correção — ${label}`,
-        "faturamento",
-        `${load[field] || "—"} → ${next}`,
-      );
-      qc.invalidateQueries({ queryKey: ["loads"] });
-      qc.invalidateQueries({ queryKey: ["load-detail", load.id] });
-      toast.success(`${label} corrigido`);
-      setEditing(false);
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
+    setEditing(false);
+    if (!next || next === load[field]) return;
+    update(
+      load,
+      { [field]: next, [origKey]: original ?? load[field] } as Partial<CargoLoad>,
+      `Carta de correção — ${label}`,
+      "faturamento",
+      `${load[field] || "—"} → ${next}`,
+    ).then(
+      () => toast.success(`${label} corrigido`),
+      (e: Error) => toast.error(e.message),
+    );
   };
 
   if (editing)
@@ -350,12 +347,10 @@ function PillInput({ label, value, onSave }: { label: string; value: string | nu
 }
 
 function OrdersSection({ load }: { load: CargoLoad }) {
-  const qc = useQueryClient();
+  const update = useUpdateLoad();
   const save = (field: "product_order" | "pallet_order" | "invoice_numbers", label: string) => async (v: string | null) => {
     if (v === (load[field] ?? null)) return;
-    await updateLoad(load, { [field]: v } as Partial<CargoLoad>, `${label} atualizada`, "faturamento", v ?? "—");
-    qc.invalidateQueries({ queryKey: ["loads"] });
-    qc.invalidateQueries({ queryKey: ["load-detail", load.id] });
+    await update(load, { [field]: v } as Partial<CargoLoad>, `${label} atualizada`, "faturamento", v ?? "—");
   };
   return (
     <section className="grid gap-3 rounded-md border p-3 sm:grid-cols-3">
@@ -378,24 +373,19 @@ const CHOICES: { key: Choice; label: string; tone: string }[] = [
 const currentChoice = (l: CargoLoad) => l.status as Choice;
 
 function StatusSection({ load, onDone }: { load: CargoLoad; onDone: () => void }) {
-  const qc = useQueryClient();
+  const update = useUpdateLoad();
   const current = currentChoice(load);
   const [errorMode, setErrorMode] = useState(false);
   const [other, setOther] = useState("");
 
-  const setExit = async (exit: boolean) => {
+  const setExit = (exit: boolean) => {
     if (load.status === "finalizada" && load.has_exit === exit) return;
-    try {
-      await updateLoad(load, { status: "finalizada", has_exit: exit, corte_reason: null },
-        exit ? "Finalizada — com saída" : "Finalizada — sem saída", "faturamento");
-      qc.invalidateQueries({ queryKey: ["loads"] });
-      toast.success(`Carga ${load.load_number}: finalizada ${exit ? "com" : "sem"} saída`);
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
+    update(load, { status: "finalizada", has_exit: exit, corte_reason: null },
+      exit ? "Finalizada — com saída" : "Finalizada — sem saída", "faturamento").catch((e: Error) => toast.error(e.message));
+    toast.success(`Carga ${load.load_number}: finalizada ${exit ? "com" : "sem"} saída`);
   };
 
-  const apply = async (c: Choice, reason?: string) => {
+  const apply = (c: Choice, reason?: string) => {
     if (c === current && c !== "corte") return;
     if (c === "finalizada") return setExit(false);
     const patch: Partial<CargoLoad> =
@@ -404,14 +394,11 @@ function StatusSection({ load, onDone }: { load: CargoLoad; onDone: () => void }
           : { status: c, corte_reason: null, has_exit: null };
     if (c === "impressa" && !load.cte_received_at) patch.cte_received_at = new Date().toISOString();
     const label = CHOICES.find((x) => x.key === c)?.label ?? c;
-    try {
-      await updateLoad(load, patch, `Status: ${label}`, "faturamento", reason);
-      qc.invalidateQueries({ queryKey: ["loads"] });
-      toast.success(`Carga ${load.load_number}: ${label}`);
-      onDone();
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
+    update(load, patch, `Status: ${label}`, "faturamento", reason).catch((e: Error) =>
+      toast.error(`Carga ${load.load_number}: ${e.message}`),
+    );
+    toast.success(`Carga ${load.load_number}: ${label}`);
+    onDone();
   };
 
   return (
