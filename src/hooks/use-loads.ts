@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchLoadsSince } from "@/lib/cargo-api";
-import { todayISO } from "@/lib/cargo";
+import { buildLoadPatch, fetchLoadsSince, updateLoad, type LoadPatch } from "@/lib/cargo-api";
+import { todayISO, type CargoLoad, type Profile } from "@/lib/cargo";
 
 function useCargoRealtime() {
   const qc = useQueryClient();
@@ -97,4 +97,28 @@ export function useLoadLocks(openId: string | null, myName: string) {
   }, [openId, myName]);
 
   return locks;
+}
+
+/**
+ * Optimistic load update: the screen changes on click, the database write runs in
+ * the background and the cache is rolled back if it fails. Realtime keeps other screens in sync.
+ */
+export function useUpdateLoad() {
+  const qc = useQueryClient();
+  return (load: CargoLoad, patch: LoadPatch, event: string, profile: Profile, details?: string) => {
+    const full = buildLoadPatch(load, patch);
+    const before = qc.getQueriesData<CargoLoad[]>({ queryKey: ["loads"] });
+    qc.setQueriesData<CargoLoad[]>({ queryKey: ["loads"] }, (old) =>
+      old?.map((l) => (l.id === load.id ? { ...l, ...full } : l)),
+    );
+    return updateLoad(load, patch, event, profile, details, full)
+      .catch((e: unknown) => {
+        before.forEach(([key, data]) => qc.setQueryData(key, data));
+        throw e;
+      })
+      .finally(() => {
+        void qc.invalidateQueries({ queryKey: ["loads"] });
+        void qc.invalidateQueries({ queryKey: ["load-detail", load.id] });
+      });
+  };
 }
