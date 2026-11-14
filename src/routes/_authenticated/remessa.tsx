@@ -46,7 +46,10 @@ function Remessa() {
     return m;
   }, [range]);
   const max = Math.max(1, ...perDay.values());
-  const dayLoads = range.filter((l) => l.load_date === date && matchesSearch(l, q));
+  const searching = !!q.trim();
+  const dayLoads = searching
+    ? range.filter((l) => matchesSearch(l, q))
+    : range.filter((l) => l.load_date === date);
   const open = range.find((l) => l.id === openId) ?? null;
 
   return (
@@ -61,6 +64,7 @@ function Remessa() {
       </AppHeader>
       <main className="mx-auto max-w-[1500px] space-y-5 p-4 md:p-6">
         <SearchBox value={q} onChange={setQ} />
+        {!searching && (
         <section className="rounded-lg border bg-card p-3">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="font-display text-lg font-bold uppercase">Histórico — últimos 30 dias</h2>
@@ -91,8 +95,14 @@ function Remessa() {
             })}
           </div>
         </section>
+        )}
         <HistoryStrip
-          title={`Cargas do dia ${date.slice(8, 10)}/${date.slice(5, 7)} (${dayLoads.length})`}
+          title={
+            searching
+              ? `Resultados (${dayLoads.length})`
+              : `Cargas do dia ${date.slice(8, 10)}/${date.slice(5, 7)} (${dayLoads.length})`
+          }
+          empty={searching ? "Nenhuma carga encontrada nos últimos 30 dias." : "Nenhuma carga"}
           items={dayLoads}
           render={(l) => <LoadTile load={l} profile="remessa" now={now} onOpen={() => setOpenId(l.id)} />}
         />

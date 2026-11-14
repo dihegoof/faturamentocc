@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Download, Truck } from "lucide-react";
 import { AccountShell } from "@/components/cargo/AccountShell";
@@ -10,9 +10,8 @@ import { LoadTile } from "@/components/cargo/LoadTile";
 import { HistoryStrip } from "@/components/cargo/HistoryStrip";
 import { SearchBox } from "@/components/cargo/SearchBox";
 import { Button } from "@/components/ui/button";
-import { useLoadLocks, useLoadsRange, useNow } from "@/hooks/use-loads";
+import { useLoadLocks, useLoadsRange, useNow, useUpdateLoad } from "@/hooks/use-loads";
 import { getCurrentUser } from "@/lib/auth";
-import { updateLoad } from "@/lib/cargo-api";
 import {
   downloadCSV,
   formatPlateLine,
@@ -45,7 +44,7 @@ export const Route = createFileRoute("/_authenticated/faturamento")({
 function Faturamento() {
   const { data: range = [], isLoading } = useLoadsRange();
   const now = useNow(1000);
-  const qc = useQueryClient();
+  const update = useUpdateLoad();
   const { data: me } = useQuery({ queryKey: ["me-profile"], queryFn: getCurrentUser });
   const [openId, setOpenId] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -59,14 +58,9 @@ function Faturamento() {
     [range, q, todays],
   );
 
-  const registerExit = async (l: CargoLoad) => {
-    try {
-      await updateLoad(l, { has_exit: true }, "Saída registrada", "faturamento");
-      qc.invalidateQueries({ queryKey: ["loads"] });
-      toast.success(`${l.plate ?? `Carga ${l.load_number}`}: saída registrada`);
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
+  const registerExit = (l: CargoLoad) => {
+    update(l, { has_exit: true }, "Saída registrada", "faturamento").catch((e: Error) => toast.error(e.message));
+    toast.success(`${l.plate ?? `Carga ${l.load_number}`}: saída registrada`);
   };
   const tile = (l: CargoLoad) => (
     <div className="flex items-start gap-1.5">
@@ -82,7 +76,7 @@ function Faturamento() {
       {l.status === "finalizada" && l.has_exit === false && (
         <button
           type="button"
-          onClick={() => void registerExit(l)}
+          onClick={() => registerExit(l)}
           title="Registrar saída da unidade"
           aria-label={`Registrar saída de ${l.plate ?? l.load_number}`}
           className="mt-1 shrink-0 rounded-full bg-tone-fin-com p-2 text-tone-fin-com-foreground shadow transition hover:scale-110"
@@ -144,7 +138,9 @@ function Faturamento() {
           </section>
         )}
         {isLoading && <p className="text-muted-foreground">Carregando cargas…</p>}
-        <HistoryStrip title="Histórico de cargas" items={range} render={tile} today={today} selector />
+        {!q.trim() && (
+          <HistoryStrip title="Histórico de cargas" items={range} render={tile} today={today} selector />
+        )}
       </main>
       <LoadModal load={open} onClose={() => setOpenId(null)} profile="faturamento" loads={range} />
     </div>
