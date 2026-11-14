@@ -11,7 +11,7 @@ import { ImportTextDialog } from "@/components/cargo/ImportTextDialog";
 import { ImportMBDialog } from "@/components/cargo/ImportMBDialog";
 import { Button } from "@/components/ui/button";
 import { useLoadsRange, useNow } from "@/hooks/use-loads";
-import { matchesSearch, todayISO } from "@/lib/cargo";
+import { importedToday, matchesSearch, todayISO, type CargoLoad } from "@/lib/cargo";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/remessa")({
@@ -35,7 +35,8 @@ export const Route = createFileRoute("/_authenticated/remessa")({
 function Remessa() {
   const { data: range = [], days } = useLoadsRange();
   const now = useNow();
-  const [date, setDate] = useState(todayISO());
+  const today = todayISO();
+  const [date, setDate] = useState(today);
   const [q, setQ] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [importText, setImportText] = useState(false);
@@ -46,10 +47,17 @@ function Remessa() {
     return m;
   }, [range]);
   const max = Math.max(1, ...perDay.values());
+  const barDays = useMemo(() => {
+    const future = [...perDay.keys()].filter((d) => d > (days[0] ?? "")).sort();
+    return [...[...days].reverse(), ...future];
+  }, [perDay, days]);
   const searching = !!q.trim();
-  const dayLoads = searching
-    ? range.filter((l) => matchesSearch(l, q))
-    : range.filter((l) => l.load_date === date);
+  const todays = range.filter((l) => importedToday(l, today));
+  const results = range.filter((l) => matchesSearch(l, q));
+  const dayLoads = range.filter((l) => l.load_date === date);
+  const tile = (l: CargoLoad) => (
+    <LoadTile load={l} profile="remessa" now={now} colored={importedToday(l, today)} onOpen={() => setOpenId(l.id)} />
+  );
   const open = range.find((l) => l.id === openId) ?? null;
 
   return (
@@ -64,14 +72,28 @@ function Remessa() {
       </AppHeader>
       <main className="mx-auto max-w-[1500px] space-y-5 p-4 md:p-6">
         <SearchBox value={q} onChange={setQ} />
+        {(searching || todays.length > 0) && (
+          <section>
+            <h2 className="mb-2 font-display text-lg font-bold uppercase">
+              {searching ? `Resultados (${results.length})` : `Cargas de hoje (${todays.length})`}
+            </h2>
+            {(searching ? results : todays).length ? (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+                {(searching ? results : todays).map((l) => <div key={l.id}>{tile(l)}</div>)}
+              </div>
+            ) : (
+              <p className="py-6 text-center text-muted-foreground">Nenhuma carga encontrada nos últimos 30 dias.</p>
+            )}
+          </section>
+        )}
         {!searching && (
         <section className="rounded-lg border bg-card p-3">
           <div className="mb-2 flex items-center justify-between">
-            <h2 className="font-display text-lg font-bold uppercase">Histórico — últimos 30 dias</h2>
+            <h2 className="font-display text-lg font-bold uppercase">Histórico por data prevista</h2>
             <span className="text-xs text-muted-foreground">{range.length} cargas no período</span>
           </div>
           <div className="flex gap-1 overflow-x-auto pb-1">
-            {[...days].reverse().map((d) => {
+            {barDays.map((d) => {
               const n = perDay.get(d) ?? 0;
               return (
                 <button
@@ -96,16 +118,14 @@ function Remessa() {
           </div>
         </section>
         )}
-        <HistoryStrip
-          title={
-            searching
-              ? `Resultados (${dayLoads.length})`
-              : `Cargas do dia ${date.slice(8, 10)}/${date.slice(5, 7)} (${dayLoads.length})`
-          }
-          empty={searching ? "Nenhuma carga encontrada nos últimos 30 dias." : "Nenhuma carga"}
-          items={dayLoads}
-          render={(l) => <LoadTile load={l} profile="remessa" now={now} onOpen={() => setOpenId(l.id)} />}
-        />
+        {!searching && (
+          <HistoryStrip
+            title={`Histórico — previstas para ${date.slice(8, 10)}/${date.slice(5, 7)} (${dayLoads.length})`}
+            empty="Nenhuma carga prevista para este dia"
+            items={dayLoads}
+            render={tile}
+          />
+        )}
       </main>
       <LoadModal load={open} onClose={() => setOpenId(null)} profile="remessa" />
       <ImportTextDialog open={importText} onOpenChange={setImportText} />
