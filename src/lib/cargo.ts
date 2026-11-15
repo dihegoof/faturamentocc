@@ -1,4 +1,4 @@
-export type CargoStatus = "pendente" | "faturado" | "impressa" | "corte" | "finalizada";
+export type CargoStatus = "pendente" | "faturado" | "impressa" | "corte" | "finalizada" | "erro_virada";
 
 export const STATUSES: { key: CargoStatus; label: string; tone: string }[] = [
   { key: "pendente", label: "Pendente", tone: "status-pendente" },
@@ -6,6 +6,7 @@ export const STATUSES: { key: CargoStatus; label: string; tone: string }[] = [
   { key: "impressa", label: "Impressa ag. CT-e", tone: "status-impressa" },
   { key: "corte", label: "Erro", tone: "status-corte" },
   { key: "finalizada", label: "Finalizada", tone: "status-finalizada" },
+  { key: "erro_virada", label: "Pendência", tone: "status-erro-virada" },
 ];
 
 export const statusLabel = (s: string) => STATUSES.find((x) => x.key === s)?.label ?? s;
@@ -72,6 +73,11 @@ export interface CargoLoad {
   plate_original?: string | null;
   dt_original?: string | null;
   cargo_products?: { code: string | null; description: string | null; boxes: number | null }[];
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  delete_reason?: string | null;
+  erro_virada_at?: string | null;
+  erro_virada_motivo?: string | null;
 }
 
 export interface ParsedProduct {
@@ -461,7 +467,14 @@ export function buildCteEmail(
   const carrier = loads[0]?.carrier?.trim() || "—";
   const plates = loads.map((l) => normalizePlate(l.plate ?? "") || "—");
   const subject = `Emissão CTe manual - ${carrier.toUpperCase()}  ${plates.join(", ")}`;
-  const data = loads.map((l, i) => `DT: ${l.dt ?? "—"}\nPlaca: ${plates[i]}`).join("\n\n");
+  // 1 carga: "DT:" / "Placa:"; 2+ cargas: "DT 1:" / "Placa 1:", "DT 2:" ...
+  const many = loads.length > 1;
+  const data = loads
+    .map((l, i) => {
+      const n = many ? ` ${i + 1}` : "";
+      return `DT${n}: ${l.dt ?? "—"}\nPlaca${n}: ${plates[i]}`;
+    })
+    .join("\n\n");
   const body = [
     `${greeting},`,
     "",
@@ -570,4 +583,75 @@ export function cteRecipients(
     to: contacts.filter((c) => c.kind === "to_fixed" || (c.kind === "carrier" && carrierMatches(c.carrier, loadCarrier))).map((c) => c.email),
     cc: contacts.filter((c) => c.kind === "cc_fixed").map((c) => c.email),
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* CT-e manual em lote, pendência da virada e histórico de pallets     */
+/* ------------------------------------------------------------------ */
+
+const normCarrier = (v: string | null | undefined) =>
+  (v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/** CT-e manual: só "Impressa ag. CT-e" e só se a carga foi importada hoje. */
+export function canRequestCte(
+  l: Pick<CargoLoad, "status" | "created_at">,
+  today = todayISO(),
+): { ok: boolean; reason?: string } {
+  if (l.status !== "impressa") return { ok: false, reason: "Só cargas com status Impressa ag. CT-e" };
+  if (!importedToday(l, today))
+    return { ok: false, reason: "CT-e manual só pode ser solicitado no dia em que a carga foi importada" };
+  return { ok: true };
+}
+
+/** Pode marcar o checkbox desta carga dado o que já está marcado (mesma transportadora). */
+export function canSelectWith(
+  l: Pick<CargoLoad, "status" | "created_at" | "carrier">,
+  selected: Pick<CargoLoad, "carrier">[],
+  today = todayISO(),
+): boolean {
+  if (!canRequestCte(l, today).ok) return false;
+  return !selected.length || normCarrier(selected[0]!.carrier) === normCarrier(l.carrier);
+}
+
+/** Valida a seleção inteira antes de montar o e-mail. */
+export function validateCteSelection(
+  loads: Pick<CargoLoad, "status" | "created_at" | "carrier">[],
+  today = todayISO(),
+): { ok: boolean; error?: string } {
+  if (!loads.length) return { ok: false, error: "Selecione ao menos uma carga" };
+  for (const l of loads) {
+    const r = canRequestCte(l, today);
+    if (!r.ok) return { ok: false, error: r.reason };
+  }
+  if (new Set(loads.map((l) => normCarrier(l.carrier))).size > 1)
+    return { ok: false, error: "Só é possível juntar cargas da mesma transportadora" };
+  return { ok: true };
+}
+
+/** Virou o dia e a carga não foi finalizada: vai para a lista de pendências. */
+export function isOverdue(l: Pick<CargoLoad, "status" | "created_at">, today = todayISO()): boolean {
+  return !importedToday(l, today) && l.status !== "finalizada" && l.status !== "erro_virada";
+}
+
+/** Transições permitidas. De "erro_virada" (pendência) só se vai para "finalizada". */
+export function allowedNextStatuses(current: string): CargoStatus[] {
+  if (current === "erro_virada") return ["finalizada"];
+  if (current === "finalizada") return [];
+  return (["pendente", "faturado", "impressa", "corte", "finalizada"] as CargoStatus[]).filter((s) => s !== current);
+}
+
+export interface PlatePalletRow {
+  load_date: string;
+  load_number: string;
+  pallets: number;
+  carrier: string | null;
+  boxes_total: number;
+  products_count: number;
+  vehicle_capacity: number;
+}
+
+/** Resumo das últimas cargas da placa: maior quantidade de pallets já levada. */
+export function summarizePallets(rows: Pick<PlatePalletRow, "pallets">[]) {
+  const values = rows.map((r) => Number(r.pallets) || 0);
+  return { max: values.length ? Math.max(...values) : 0, values };
 }
