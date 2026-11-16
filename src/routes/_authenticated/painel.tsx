@@ -5,6 +5,8 @@ import { CatalogSection } from "@/components/cargo/CatalogSection";
 import { ClientsSection } from "@/components/cargo/ClientsSection";
 import { ContactsSection } from "@/components/cargo/ContactsSection";
 import { UsersSection } from "@/components/cargo/UsersSection";
+import { ArchiveSection } from "@/components/cargo/ArchiveSection";
+import { DeletedLoadsSection } from "@/components/cargo/DeletedLoadsSection";
 import { getCurrentUser } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated/painel")({
@@ -27,13 +29,19 @@ export const Route = createFileRoute("/_authenticated/painel")({
 
 function Painel() {
   const { data: me } = useQuery({ queryKey: ["me-profile"], queryFn: getCurrentUser });
+  const isAdmin = me?.profile === "admin";
+
   return (
     <main className="mx-auto max-w-6xl space-y-5 p-4 md:p-6">
       <h1 className="font-display text-3xl font-bold">Painel</h1>
+
+      {isAdmin && <DeletedLoadsSection />}
+      {isAdmin && <ArchiveSection />}
+
       <ClientsSection />
       <ContactsSection />
       <CatalogSection />
-      {me?.profile === "admin" && <UsersSection />}
+      {isAdmin && <UsersSection />}
     </main>
   );
 }
