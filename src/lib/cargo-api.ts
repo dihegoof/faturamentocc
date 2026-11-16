@@ -7,6 +7,7 @@ export async function fetchLoadsByDate(date: string): Promise<CargoLoad[]> {
     .from("cargo_loads")
     .select("*")
     .eq("load_date", date)
+    .is("deleted_at", null)
     .order("created_at");
   if (error) throw error;
   return data as CargoLoad[];
@@ -16,6 +17,7 @@ export async function fetchLoadsRange(from: string, to: string): Promise<CargoLo
   const { data, error } = await supabase
     .from("cargo_loads")
     .select("*")
+    .is("deleted_at", null)
     .gte("load_date", from)
     .lte("load_date", to)
     .order("load_date", { ascending: false })
@@ -29,6 +31,7 @@ export async function fetchLoadsSince(from: string, createdSince: string): Promi
   const { data, error } = await supabase
     .from("cargo_loads")
     .select("*, cargo_products(code, description, boxes)")
+    .is("deleted_at", null)
     .or(`load_date.gte.${from},created_at.gte.${createdSince}`)
     .order("load_date", { ascending: false })
     .limit(1000);
@@ -40,6 +43,7 @@ export async function searchByPlate(plate: string): Promise<CargoLoad[]> {
   const { data, error } = await supabase
     .from("cargo_loads")
     .select("*")
+    .is("deleted_at", null)
     .ilike("plate", `%${plate}%`)
     .order("load_date", { ascending: false })
     .limit(100);
@@ -48,6 +52,14 @@ export async function searchByPlate(plate: string): Promise<CargoLoad[]> {
 }
 
 export async function fetchLoadDetail(id: string) {
+  const { data: head, error: he } = await supabase
+    .from("cargo_loads")
+    .select("id")
+    .eq("id", id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (he) throw he;
+  if (!head) throw new Error("Carga excluída ou inexistente.");
   const [products, history] = await Promise.all([
     supabase.from("cargo_products").select("*").eq("load_id", id).order("created_at"),
     supabase.from("cargo_history").select("*").eq("load_id", id).order("created_at"),
@@ -172,6 +184,7 @@ export async function importLoads(loads: ParsedLoad[], source: string, profile: 
       .select("id")
       .eq("load_date", l.load_date)
       .eq("load_number", l.load_number)
+      .is("deleted_at", null)
       .maybeSingle();
     if (existing) {
       skipped.push(l.load_number);
@@ -251,4 +264,124 @@ export async function saveContact(c: { kind: ContactKind; email: string; carrier
 export async function deleteContact(id: string) {
   const { error } = await supabase.from("cte_contacts").delete().eq("id", id);
   if (error) throw error;
+}
+
+/* ------------------------------------------------------------------ */
+/* Histórico de pallets por placa (últimas N cargas)                   */
+/* ------------------------------------------------------------------ */
+
+export async function fetchPlateHistory(plate: string, limit = 5) {
+  const { data, error } = await supabase.rpc("plate_pallet_history", {
+    p_plate: plate,
+    p_limit: limit,
+  });
+  if (error) throw error;
+  return (data ?? []) as PlatePalletRow[];
+}
+
+export type PlatePalletRow = {
+  load_date: string;
+  load_number: string;
+  pallets: number;
+  carrier: string | null;
+  boxes_total: number;
+  products_count: number;
+  vehicle_capacity: number;
+};
+
+/* ------------------------------------------------------------------ */
+/* Exclusão superficial e painel do admin                              */
+/* ------------------------------------------------------------------ */
+
+/** Some para a operação; o admin ainda vê em "Cargas excluídas". */
+export async function softDeleteLoad(id: string, deletedBy?: string, reason?: string) {
+  const { error } = await supabase.rpc("soft_delete_load", {
+    p_load_id: id,
+    p_deleted_by: deletedBy ?? null,
+    p_reason: reason ?? null,
+  });
+  if (error) throw error;
+}
+
+export async function restoreLoad(id: string) {
+  const { error } = await supabase.rpc("restore_load", { p_load_id: id });
+  if (error) throw error;
+}
+
+export async function fetchDeletedLoads(): Promise<CargoLoad[]> {
+  const { data, error } = await supabase
+    .from("cargo_loads")
+    .select("*")
+    .not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: false })
+    .limit(500);
+  if (error) throw error;
+  return data as CargoLoad[];
+}
+
+/* ------------------------------------------------------------------ */
+/* Pendência da virada do dia                                          */
+/* ------------------------------------------------------------------ */
+
+/** Cargas que viraram o dia sem finalizar. */
+export async function fetchErroVirada(): Promise<CargoLoad[]> {
+  const { data, error } = await supabase
+    .from("cargo_loads")
+    .select("*")
+    .eq("status", "erro_virada")
+    .is("deleted_at", null)
+    .order("load_date")
+    .order("load_number");
+  if (error) throw error;
+  return data as CargoLoad[];
+}
+
+/** Roda a virada manualmente (o job diário faz o mesmo). */
+export async function runVirada(date?: string) {
+  const { data, error } = await supabase.rpc("virada_do_dia", { p_date: date ?? null });
+  if (error) throw error;
+  return data as number;
+}
+
+/* ------------------------------------------------------------------ */
+/* Arquivo morto e retenção de 6 meses                                 */
+/* ------------------------------------------------------------------ */
+
+export async function fetchArchiveExports() {
+  const { data, error } = await supabase
+    .from("archive_exports")
+    .select("id, period_start, period_end, loads_count, products_count, history_count, status, exported_at, purge_allowed_at, purged_at")
+    .order("period_end", { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchPendingArchive() {
+  const { data, error } = await supabase
+    .from("v_pending_archive")
+    .select("*")
+    .order("first_date");
+  if (error) throw error;
+  return data;
+}
+
+/** Exporta e compacta um período no arquivo morto virtual. */
+export async function archivePeriod(start: string, end: string) {
+  const { data, error } = await supabase.rpc("archive_period", { p_start: start, p_end: end });
+  if (error) throw error;
+  return data as string;
+}
+
+/** Só depois de exportado e passada a carência. */
+export async function purgeArchived(archiveId: string) {
+  const { data, error } = await supabase.rpc("purge_archived", { p_archive_id: archiveId });
+  if (error) throw error;
+  return data as number;
+}
+
+/** O que já pode ser arquivado (mais velho que 6 meses). */
+export async function fetchRetentionCutoff(): Promise<string> {
+  const { data, error } = await supabase.rpc("retention_cutoff");
+  if (error) throw error;
+  return data as unknown as string;
 }
