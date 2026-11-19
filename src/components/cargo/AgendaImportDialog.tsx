@@ -37,13 +37,17 @@ export function AgendaImportDialog({
         onProgress: (done, total) => setProgress({ done, total }),
       }),
     onSuccess: (r) => {
+      setProgress(null);
       toast.success(`${r.created} carga(s) criada(s) · ${r.matched} já existia(m)`);
       if (r.warnings.length) toast.warning(`${r.warnings.length} aviso(s) na agenda`);
       qc.invalidateQueries({ queryKey: ["loads"] });
       qc.invalidateQueries({ queryKey: ["agenda-imports"] });
       close();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      setProgress(null);
+      toast.error(e.message);
+    },
   });
 
   function close() {
@@ -85,7 +89,28 @@ export function AgendaImportDialog({
           <DialogTitle className="font-display text-2xl">Importar agenda</DialogTitle>
         </DialogHeader>
 
-        {!loads ? (
+        {progress ? (
+          <div className="space-y-3 py-6">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-semibold">Importando cargas…</span>
+              <span className="text-muted-foreground">
+                {progress.done} / {progress.total} ·{" "}
+                {Math.round((progress.done / Math.max(1, progress.total)) * 100)}%
+              </span>
+            </div>
+            <div className="h-3 w-full overflow-hidden rounded-full bg-neutral-200">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-all duration-200"
+                style={{
+                  width: `${Math.round((progress.done / Math.max(1, progress.total)) * 100)}%`,
+                }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Não feche esta janela — a importação termina sozinha.
+            </p>
+          </div>
+        ) : !loads ? (
           <>
             <p className="text-sm text-muted-foreground">
               Selecione o arquivo da agenda (.xlsx). O app lê a aba <strong>Programação</strong> e
@@ -112,7 +137,7 @@ export function AgendaImportDialog({
               }}
             />
           </>
-        ) : progress ? null : (
+        ) : (
           <>
             <div className="flex items-center gap-2 text-sm">
               <FileSpreadsheet className="h-4 w-4" />
@@ -155,34 +180,15 @@ export function AgendaImportDialog({
               </tbody>
             </table>
 
-            {progress ? (
-              <div className="space-y-2 pt-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span>Importando cargas…</span>
-                  <span className="text-muted-foreground">
-                    {progress.done} / {progress.total}
-                  </span>
-                </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{
-                      width: `${Math.round((progress.done / Math.max(1, progress.total)) * 100)}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <DialogFooter>
-                <Button variant="outline" onClick={close}>Cancelar</Button>
-                <Button
-                  disabled={send.isPending || !comDt.length}
-                  onClick={() => send.mutate({ loads: comDt, fileName })}
-                >
-                  Importar {comDt.length} carga(s)
-                </Button>
-              </DialogFooter>
-            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={close}>Cancelar</Button>
+              <Button
+                disabled={send.isPending || !comDt.length}
+                onClick={() => send.mutate({ loads: comDt, fileName })}
+              >
+                Importar {comDt.length} carga(s)
+              </Button>
+            </DialogFooter>
           </>
         )}
       </DialogContent>
