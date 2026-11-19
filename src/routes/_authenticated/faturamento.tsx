@@ -361,6 +361,8 @@ function DtSwapDialog({
   const [motivo, setMotivo] = useState("faturamento inverter SKU");
   const [nfs, setNfs] = useState("");
   const [busy, setBusy] = useState(false);
+  /** Vira true depois que o e-mail foi aberto: libera a confirmação da troca. */
+  const [mailSent, setMailSent] = useState(false);
   /** E-mail da transportadora escolhido pelo usuário neste modal. */
   const [fromEmail, setFromEmail] = useState("");
 
@@ -390,9 +392,14 @@ function DtSwapDialog({
     mention: fromEmail || carrierContacts[0]?.email || "",
   });
 
-  /** Confirma a troca e abre o Outlook montado. A confirmação é explícita:
-   *  cancelar o e-mail depois não desfaz, mas fechar ESTE modal não troca nada. */
-  const openMail = async () => {
+  /** 1º passo: só abre o Outlook. O DT ainda NÃO mudou. */
+  const openMail = () => {
+    window.location.href = mailtoHref(to, auto.cc, subject, body);
+    setMailSent(true);
+  };
+
+  /** 2º passo: o usuário confirma que disparou o e-mail — só agora o DT muda. */
+  const confirmSwap = async () => {
     setBusy(true);
     try {
       await update(
@@ -403,7 +410,6 @@ function DtSwapDialog({
         `${swap.oldDt || "—"} → ${swap.newDt}`,
       );
       toast.success(`DT alterado: ${swap.oldDt || "—"} → ${swap.newDt}`);
-      window.location.href = mailtoHref(to, auto.cc, subject, body);
       onClose();
     } catch (e) {
       toast.error((e as Error).message);
@@ -413,17 +419,22 @@ function DtSwapDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-xl bg-card p-4 shadow-xl">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-xl border bg-card p-4 shadow-2xl">
         <h3 className="mb-1 font-display text-lg font-bold">Troca de DT</h3>
         <p className="mb-3 text-sm text-muted-foreground">
           Transporte antigo <strong>{swap.oldDt}</strong> → novo <strong>{swap.newDt}</strong>
           {swap.plate ? ` · ${swap.plate}` : ""}
         </p>
 
+        <label className="mb-3 flex items-center gap-2 text-sm">
+          <Checkbox checked={mdfe} onCheckedChange={(v) => setMdfe(v === true)} />
+          O CT-e desta carga tem MDF-e?
+        </label>
+
         <div className="mb-3 grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
-            <Label className="text-xs">E-mail da transportadora</Label>
+            <Label className="text-xs">Menção da transportadora (2ª linha)</Label>
             <select
               value={fromEmail}
               onChange={(e) => setFromEmail(e.target.value)}
@@ -445,10 +456,6 @@ function DtSwapDialog({
             <Label className="text-xs">Motivo (3ª linha)</Label>
             <Input value={motivo} onChange={(e) => setMotivo(e.target.value)} className="h-9" />
           </div>
-          <label className="flex items-center gap-2 text-sm sm:col-span-2">
-            <Checkbox checked={mdfe} onCheckedChange={(v) => setMdfe(v === true)} />
-            O CT-e desta carga tem MDF-e?
-          </label>
         </div>
 
         <p className="mb-1 text-sm"><strong>Para:</strong> {to.join("; ") || "—"}</p>
@@ -458,15 +465,25 @@ function DtSwapDialog({
           {body}
         </pre>
 
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <span className="mr-auto text-sm">
-            Trocar o DT para <strong>{swap.newDt}</strong> e abrir o e-mail?
-          </span>
-          <Button variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
-          <Button onClick={openMail} disabled={busy}>
-            {busy ? "Abrindo…" : `Trocar DT e abrir e-mail`}
-          </Button>
-        </div>
+        {!mailSent ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <span className="mr-auto text-sm text-muted-foreground">
+              Abra o e-mail primeiro. A troca só é efetivada depois que você confirmar.
+            </span>
+            <Button variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
+            <Button onClick={openMail} disabled={busy}>Abrir e-mail</Button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <span className="mr-auto text-sm">
+              E-mail enviado? Confirmar a troca para <strong>{swap.newDt}</strong>
+            </span>
+            <Button variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
+            <Button onClick={confirmSwap} disabled={busy}>
+              {busy ? "Alterando…" : "Confirmar troca de DT"}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
