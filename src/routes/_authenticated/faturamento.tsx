@@ -66,8 +66,7 @@ function Faturamento() {
   const [selected, setSelected] = useState<string[]>([]);
   /** Resultado do último "Solicitar CT-e": destinatários e assunto prontos. */
   const [batch, setBatch] = useState<{ to: string[]; cc: string[]; carrier: string } | null>(null);
-  /** Escolhas do modal de CT-e: MDF-e e o e-mail da transportadora. */
-  const [cteMdfe, setCteMdfe] = useState(false);
+  /** E-mail da transportadora escolhido no modal de CT-e. */
   const [cteFrom, setCteFrom] = useState("");
   /** Troca de DT formalizada por e-mail: DT antigo x novo. */
   const [dtSwap, setDtSwap] = useState<{
@@ -93,6 +92,7 @@ function Faturamento() {
   );
   const carrierOf = (l: CargoLoad) =>
     l.carrier ?? clients.find((c) => c.center_code === (l.destination_code ?? "").toUpperCase())?.name ?? "";
+
   /** E-mails cadastrados da transportadora das cargas marcadas.
    *  Declarado DEPOIS de selectedLoads e carrierOf de propósito: usa os dois. */
   const carrierEmails = useMemo(
@@ -132,7 +132,6 @@ function Faturamento() {
       toast.error(`Nenhum e-mail cadastrado para ${carrier || "esta transportadora"}`);
       return;
     }
-    setCteMdfe(false);
     setCteFrom("");
     setBatch({ to, cc: [], carrier });
   };
@@ -145,7 +144,7 @@ function Faturamento() {
     const { cc } = cteRecipients(contacts, batch.carrier);
     const { subject, body } = buildCteEmail(
       selectedLoads.map((l) => ({ carrier: carrierOf(l), plate: l.plate ?? "", dt: l.dt ?? "" })),
-      { mdfe: cteMdfe, carrier: batch.carrier, to },
+      { carrier: batch.carrier, to },
     );
     window.location.href = mailtoHref(to, cc, subject, body);
     setBatch(null);
@@ -292,7 +291,7 @@ function Faturamento() {
 
               <div className="mb-3 grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label className="text-xs">E-mail da transportadora</Label>
+                  <Label className="text-xs">Menção da transportadora (2ª linha)</Label>
                   <select
                     value={cteFrom}
                     onChange={(e) => setCteFrom(e.target.value)}
@@ -306,10 +305,6 @@ function Faturamento() {
                     ))}
                   </select>
                 </div>
-                <label className="flex items-center gap-2 self-end text-sm">
-                  <Checkbox checked={cteMdfe} onCheckedChange={(v) => setCteMdfe(v === true)} />
-                  O CT-e tem MDF-e?
-                </label>
               </div>
 
               <p className="mb-1 text-sm"><strong>Para:</strong> {(cteFrom ? [cteFrom] : batch.to).join("; ")}</p>
@@ -374,12 +369,13 @@ function DtSwapDialog({
     [contacts, swap?.carrier],
   );
 
-  // Torre entra sempre no Para; o pessoal fixo entra em Cópia.
+  // Destinatário continua sendo TODOS da transportadora + Torre; o que o
+  // usuário escolhe é apenas a menção que aparece na 2ª linha do corpo.
   const auto = useMemo(() => cteRecipients(contacts, swap?.carrier ?? ""), [contacts, swap?.carrier]);
   const to = useMemo(() => {
-    const chosen = fromEmail ? [fromEmail] : carrierContacts.map((c) => c.email);
+    const chosen = carrierContacts.map((c) => c.email);
     return [...chosen, ...auto.to.filter((e) => !chosen.includes(e))];
-  }, [fromEmail, carrierContacts, auto.to]);
+  }, [carrierContacts, auto.to]);
 
   if (!swap) return null;
 
@@ -391,7 +387,7 @@ function DtSwapDialog({
     mdfe,
     motivo,
     nfs,
-    to,
+    mention: fromEmail || carrierContacts[0]?.email || "",
   });
 
   /** Abre o Outlook já montado — sem botão de copiar. */
@@ -434,7 +430,7 @@ function DtSwapDialog({
               className="h-9 w-full rounded-md border bg-background px-2 text-sm"
             >
               <option value="">
-                {carrierContacts.length ? "Todos da transportadora" : "Nenhum cadastrado"}
+                {carrierContacts.length ? "Mencionar todos" : "Nenhum cadastrado"}
               </option>
               {carrierContacts.map((c) => (
                 <option key={c.email} value={c.email}>{c.email}</option>
@@ -451,7 +447,7 @@ function DtSwapDialog({
           </div>
           <label className="flex items-center gap-2 text-sm sm:col-span-2">
             <Checkbox checked={mdfe} onCheckedChange={(v) => setMdfe(v === true)} />
-            O CT-e desta carga tem MDF-e? (inclui a linha do MDF-e no e-mail)
+            O CT-e desta carga tem MDF-e?
           </label>
         </div>
 
