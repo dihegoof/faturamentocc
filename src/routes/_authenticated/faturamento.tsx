@@ -30,7 +30,10 @@ import {
   downloadCSV,
   formatPlateLine,
   importedToday,
+  isAgendaLocked,
+  isFutureLoad,
   isOverdue,
+  lockReason,
   matchesSearch,
   minutesSince,
   statusLabel,
@@ -88,7 +91,10 @@ function Faturamento() {
   const { data: contacts = [] } = useQuery({ queryKey: ["cte-contacts"], queryFn: fetchContacts });
   const { data: clients = [] } = useQuery({ queryKey: ["clients"], queryFn: fetchClients });
 
-  const todays = useMemo(() => range.filter((l) => importedToday(l, today)), [range, today]);
+  /** Cargas de hoje: pela data prevista da carga, não pela data de importação. */
+  const todays = useMemo(() => range.filter((l) => l.load_date === today), [range, today]);
+  /** Cargas de agenda ainda bloqueadas (esperando a Remessa). */
+  const lockedAgenda = useMemo(() => range.filter((l) => isAgendaLocked(l)), [range]);
   /** Cargas de dias anteriores que nunca foram finalizadas: pendência de checagem. */
   const pendings = useMemo(() => range.filter((l) => isOverdue(l, today)), [range, today]);
   const selectedLoads = useMemo(
@@ -157,8 +163,8 @@ function Faturamento() {
   };
 
   const tile = (l: CargoLoad) => {
-    /** Alguém está com esta carga aberta: o card fica opaco e sem clique. */
-    const locked = !!locks[l.id];
+    /** Alguém com a carga aberta, ou carga da agenda ainda não liberada. */
+    const locked = !!locks[l.id] || isAgendaLocked(l) || isFutureLoad(l, today);
     return (
     <div className="flex items-start gap-1.5">
       <LoadTile
@@ -170,6 +176,7 @@ function Faturamento() {
         onOpen={() => { if (!locked) setOpenId(l.id); }}
         className={cn("min-w-0 flex-1", locked && "cursor-not-allowed opacity-55 saturate-50")}
         aria-disabled={locked}
+        title={lockReason(l, today) ?? undefined}
       />
       {l.status === "impressa" && importedToday(l, today) && (
         <label
