@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Check, History, Mail, Pencil, X } from "lucide-react";
+import { Check, History, Mail, Pencil, Trash2, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fetchCatalog, fetchClientByCenter, fetchLoadDetail } from "@/lib/cargo-api";
+import { fetchCatalog, fetchClientByCenter, fetchLoadDetail, softDeleteLoad } from "@/lib/cargo-api";
 import { useUpdateLoad } from "@/hooks/use-loads";
 import {
   CORTE_REASONS,
@@ -44,6 +44,7 @@ export function LoadModal({
 }) {
   const [logOpen, setLogOpen] = useState(false);
   const [cteOpen, setCteOpen] = useState(false);
+  const [delOpen, setDelOpen] = useState(false);
   const { data, isLoading } = useQuery({
     queryKey: ["load-detail", load?.id],
     queryFn: () => fetchLoadDetail(load!.id),
@@ -86,6 +87,15 @@ export function LoadModal({
                   )}
                   <Button size="sm" variant="outline" onClick={() => setLogOpen(true)}>
                     <History className="h-4 w-4" /> Ações
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => setDelOpen(true)}
+                    title="Excluir carga (o admin pode restaurar)"
+                  >
+                    <Trash2 className="h-4 w-4" /> Excluir
                   </Button>
                 </div>
               </div>
@@ -208,6 +218,14 @@ export function LoadModal({
           </ol>
         </DialogContent>
       </Dialog>
+      <DeleteDialog
+        load={delOpen ? load : null}
+        onClose={() => setDelOpen(false)}
+        onDone={() => {
+          setDelOpen(false);
+          onClose();
+        }}
+      />
       {fat && (
         <CteDialog
           loads={cteOpen && load ? [load] : null}
@@ -452,5 +470,67 @@ function StatusSection({ load, onDone }: { load: CargoLoad; onDone: () => void }
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Exclusão superficial: a carga sai da operação, mas fica guardada no banco.
+ * Só o admin consegue restaurar, pelo Painel. Nada é apagado de verdade
+ * antes de 6 meses de retenção.
+ */
+function DeleteDialog({
+  load,
+  onClose,
+  onDone,
+}: {
+  load: CargoLoad | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function confirmDelete() {
+    if (!load) return;
+    setBusy(true);
+    try {
+      await softDeleteLoad(load.id, "faturamento", reason.trim() || undefined);
+      toast.success(`Carga ${load.load_number} excluída — o admin pode restaurar`);
+      onDone();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={!!load} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="font-display text-2xl">Excluir carga {load?.load_number}</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          A carga sai do painel para toda a operação, mas <strong>não é apagada</strong> — fica
+          guardada e só o administrador pode restaurá-la, no Painel.
+        </p>
+        <div className="space-y-1">
+          <Label htmlFor="del-reason" className="text-xs">Motivo (opcional)</Label>
+          <Input
+            id="del-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Ex: carga duplicada"
+            className="h-9"
+          />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button variant="destructive" disabled={busy} onClick={confirmDelete}>
+            {busy ? "Excluindo…" : "Excluir carga"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
