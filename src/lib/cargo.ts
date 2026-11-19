@@ -462,11 +462,13 @@ export function downloadCSV(name: string, rows: Record<string, unknown>[]) {
 /** CT-e manual e-mail. Several loads of the same carrier share one e-mail. */
 export function buildCteEmail(
   loads: Pick<CargoLoad, "dt" | "plate" | "carrier">[],
+  options: { mdfe?: boolean; carrier?: string | null; to?: string[] } = {},
   greeting = new Date().getHours() < 12 ? "Bom dia" : "Boa tarde",
 ) {
-  const carrier = loads[0]?.carrier?.trim() || "—";
+  const carrier = (options.carrier ?? loads[0]?.carrier ?? "—").trim();
   const plates = loads.map((l) => normalizePlate(l.plate ?? "") || "—");
   const subject = `Emissão CTe manual - ${carrier.toUpperCase()}  ${plates.join(", ")}`;
+
   // 1 carga: "DT:" / "Placa:"; 2+ cargas: "DT 1:" / "Placa 1:", "DT 2:" ...
   const many = loads.length > 1;
   const data = loads
@@ -475,16 +477,35 @@ export function buildCteEmail(
       return `DT${n}: ${l.dt ?? "—"}\nPlaca${n}: ${plates[i]}`;
     })
     .join("\n\n");
+
+  // 1ª linha: e-mail da transportadora (escolhido no modal).
+  const first = options.to?.length
+    ? options.to.map((e) => `<mailto:${e}|${e}>`).join(", ")
+    : `<${carrier}>`;
+
   const body = [
-    `${greeting},`,
+    `${greeting} a todos!`,
     "",
-    `Por gentileza nos apoiar com o desacordo do transporte abaixo para que a ${carrier} siga com a emissão do CT-e manual, segue dados abaixo:`,
+    `${first}, por gentileza nos apoiar com a emissão do CT-e manual do transporte citado abaixo.`,
+    "",
+    // 2ª linha só entra quando o checkbox de MDF-e está marcado.
+    ...(options.mdfe ? ["Este transporte possui MDF-e, favor considerar.", ""] : []),
+    `<Torremgt1>, por gentileza nos apoiar com a solicitação abaixo!`,
+    "",
+    `<Abastecimento PR>, favor considerar para emissão!`,
     "",
     data,
-    "",
-    "[Cole aqui a evidência do Triangulus]",
   ].join("\n");
   return { subject, body };
+}
+
+/** Atalho para enviar o CT-e manual: abre o Outlook já com Para/Cópia/Assunto/Corpo. */
+export function mailtoHref(to: string[], cc: string[], subject: string, body: string): string {
+  const parts: string[] = [];
+  if (cc.length) parts.push(`cc=${encodeURIComponent(cc.join(";"))}`);
+  parts.push(`subject=${encodeURIComponent(subject)}`);
+  parts.push(`body=${encodeURIComponent(body)}`);
+  return `mailto:${to.join(";")}?${parts.join("&")}`;
 }
 
 /** NF / ordem lists are stored as comma-separated text. */
@@ -654,4 +675,44 @@ export interface PlatePalletRow {
 export function summarizePallets(rows: Pick<PlatePalletRow, "pallets">[]) {
   const values = rows.map((r) => Number(r.pallets) || 0);
   return { max: values.length ? Math.max(...values) : 0, values };
+}
+
+/**
+ * Troca de DT: o DT do manifesto precisa mudar (ex.: faturamento inverteu SKU).
+ * Texto padrão do e-mail de solicitação, com o transporte antigo e o novo.
+ */
+export function buildDtSwapEmail(
+  swap: {
+    oldDt: string;
+    newDt: string;
+    plate?: string | null;
+    carrier?: string | null;
+    mdfe?: boolean;
+    motivo?: string;
+    nfs?: string;
+    to?: string[];
+  },
+  greeting = new Date().getHours() < 12 ? "Bom dia" : "Boa tarde",
+): { subject: string; body: string } {
+  const carrier = (swap.carrier ?? "").trim();
+  const subject = `Troca de DT: ${swap.newDt} | ${carrier.toUpperCase()}`;
+  const first = swap.to?.length
+    ? swap.to.map((e) => `<mailto:${e}|${e}>`).join(", ")
+    : `<${carrier}>`;
+
+  const body = [
+    `${greeting} a todos!`,
+    "",
+    `${first}, por gentileza nos apoiar com o cancelamento do manifesto do transporte citado abaixo.`,
+    "",
+    ...(swap.mdfe ? ["Este transporte possui MDF-e, favor considerar.", ""] : []),
+    `<Torremgt1>, por gentileza nos apoiar com troca de transporte abaixo, será alterado devido ${swap.motivo?.trim() || "faturamento inverter SKU"}!`,
+    "",
+    `<Abastecimento PR>, desconsiderar as notas fiscais ${swap.nfs?.trim() || "citadas"}, essas serão canceladas!`,
+    "",
+    `Transporte antigo: ${swap.oldDt}`,
+    "",
+    `Transporte novo: ${swap.newDt}`,
+  ].join("\n");
+  return { subject, body };
 }
