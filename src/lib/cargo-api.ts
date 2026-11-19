@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
-import type { CargoLoad, CargoStatus, ParsedLoad, Profile } from "./cargo";
+import type { CargoLoad, CargoStatus, ParsedAgenda, ParsedLoad, Profile } from "./cargo";
 
 export async function fetchLoadsByDate(date: string): Promise<CargoLoad[]> {
   const { data, error } = await supabase
@@ -384,4 +384,156 @@ export async function fetchRetentionCutoff(): Promise<string> {
   const { data, error } = await supabase.rpc("retention_cutoff");
   if (error) throw error;
   return data as unknown as string;
+}
+
+/* ------------------------------------------------------------------ */
+/* Agenda do Faturamento e confirmação da Remessa                      */
+/* ------------------------------------------------------------------ */
+
+/** Liga/desliga o fluxo novo. Desligado, o app é o de sempre. */
+export async function agendaSyncOn(): Promise<boolean> {
+  const { data, error } = await supabase.rpc("agenda_sync_on");
+  if (error) throw error;
+  return data === true;
+}
+
+export async function setSetting(key: string, value: string, by?: string) {
+  const { error } = await supabase.rpc("set_setting", {
+    p_key: key, p_value: value, p_by: by ?? null,
+  });
+  if (error) throw error;
+}
+
+export async function fetchSettings() {
+  const { data, error } = await supabase.from("app_settings").select("*").order("key");
+  if (error) throw error;
+  return data;
+}
+
+/** Log de quem subiu a agenda, quando, e quantas cargas entraram. */
+export async function fetchAgendaImports(limit = 30) {
+  const { data, error } = await supabase
+    .from("agenda_imports")
+    .select("*")
+    .order("uploaded_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Sobe a agenda do Faturamento. Cria as cargas que ainda não existem, com
+ * status 'pendente_remessa' (bloqueadas até a Remessa confirmar).
+ * Nada é sobrescrito: carga que já existe é apenas contada.
+ */
+export async function importAgenda(
+  loads: ParsedAgenda[],
+  opts: { fileName?: string; uploadedBy?: string; loadDate?: string } = {},
+) {
+  const productsTotal = loads.reduce((n, l) => n + l.products.length, 0);
+  let created = 0;
+  let matched = 0;
+  const warnings: string[] = [];
+
+  const { data: imp, error: ie } = await supabase
+    .from("agenda_imports")
+    .insert({
+      file_name: opts.fileName ?? null,
+      load_date: opts.loadDate ?? null,
+      uploaded_by: opts.uploadedBy ?? null,
+      loads_total: loads.length,
+      products_total: productsTotal,
+    })
+    .select("id")
+    .single();
+  if (ie) throw ie;
+
+  for (const l of loads) {
+    if (!l.dt) {
+      warnings.push(`Carga ${l.load_number}: sem DT, não importada`);
+      continue;
+    }
+    const { data: existing } = await supabase
+      .from("cargo_loads")
+      .select("id")
+      .eq("dt", l.dt)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (existing) {
+      matched++;
+      continue;
+    }
+
+    const { data, error } = await supabase
+      .from("cargo_loads")
+      .insert({
+        load_date: l.load_date,
+        load_number: l.load_number,
+        origin: l.origin,
+        destination: l.destination,
+        destination_code: l.destination_code || null,
+        dt: l.dt,
+        pallets: l.pallets,
+        status: "pendente_remessa",
+        source: "agenda",
+        agenda_import_id: imp.id,
+      })
+      .select("id")
+      .single();
+    if (error) {
+      if (error.code === "23505") { matched++; continue; }
+      throw error;
+    }
+    if (l.products.length) {
+      const { error: pe } = await supabase.from("cargo_products").insert(
+        l.products.map((p) => ({ code: p.code, description: p.description, boxes: p.boxes, load_id: data.id })),
+      );
+      if (pe) throw pe;
+    }
+    warnings.push(...l.warnings.map((w) => `Carga ${l.load_number}: ${w}`));
+    created++;
+  }
+
+  await supabase.from("agenda_imports").update({
+    created_count: created, matched_count: matched, warnings,
+  }).eq("id", imp.id);
+
+  return { importId: imp.id as string, created, matched, warnings };
+}
+
+/** A Remessa confirma: completa placa e transportadora, sem sobrescrever produtos. */
+export async function confirmFromRemessa(
+  dt: string, plate: string, carrier: string, profile: Profile = "remessa", details?: string,
+) {
+  const { data, error } = await supabase.rpc("confirm_load_from_remessa", {
+    p_dt: dt, p_plate: plate, p_carrier: carrier, p_profile: profile, p_details: details ?? null,
+  });
+  if (error) throw error;
+  return data as string;
+}
+
+export async function fetchAguardandoRemessa() {
+  const { data, error } = await supabase.from("v_aguardando_remessa").select("*").order("load_date");
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchForaDaAgenda() {
+  const { data, error } = await supabase.from("v_fora_da_agenda").select("*").order("load_date", { ascending: false });
+  if (error) throw error;
+  return data as unknown as CargoLoad[];
+}
+
+export async function fetchCargasAlerta() {
+  const { data, error } = await supabase.from("v_cargas_alerta").select("*").order("load_date", { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+/** Quais DTs da Remessa já existem no app (casamento por DT). */
+export async function matchAgendaByDt(dts: string[]) {
+  if (!dts.length) return [];
+  const { data, error } = await supabase.rpc("match_agenda_by_dt", { p_dts: dts });
+  if (error) throw error;
+  return data as { dt: string; load_id: string; confirmed: boolean }[];
 }

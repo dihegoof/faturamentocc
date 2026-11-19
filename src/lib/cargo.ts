@@ -1,4 +1,11 @@
-export type CargoStatus = "pendente" | "faturado" | "impressa" | "corte" | "finalizada" | "erro_virada";
+export type CargoStatus =
+  | "pendente"
+  | "pendente_remessa"
+  | "faturado"
+  | "impressa"
+  | "corte"
+  | "finalizada"
+  | "erro_virada";
 
 export const STATUSES: { key: CargoStatus; label: string; tone: string }[] = [
   { key: "pendente", label: "Pendente", tone: "status-pendente" },
@@ -7,6 +14,7 @@ export const STATUSES: { key: CargoStatus; label: string; tone: string }[] = [
   { key: "corte", label: "Erro", tone: "status-corte" },
   { key: "finalizada", label: "Finalizada", tone: "status-finalizada" },
   { key: "erro_virada", label: "Pendência", tone: "status-erro-virada" },
+  { key: "pendente_remessa", label: "Aguardando Remessa", tone: "status-pendente-remessa" },
 ];
 
 export const statusLabel = (s: string) => STATUSES.find((x) => x.key === s)?.label ?? s;
@@ -685,7 +693,7 @@ export function buildDtSwapEmail(
   greeting = new Date().getHours() < 12 ? "Bom dia" : "Boa tarde",
 ): { subject: string; body: string } {
   const carrier = (swap.carrier ?? "").trim();
-  const subject = `Troca de DT: ${swap.oldDt} > ${swap.newDt} | ${carrier.toUpperCase()}`;
+  const subject = `Troca de DT: ${swap.newDt} | ${carrier.toUpperCase()}`;
   const motivo = (swap.motivo ?? "").trim() || "faturamento inverter SKU";
   // A 2ª linha cita só o e-mail selecionado — sem mailto:, que o Outlook
   // já transforma em link e ficava aparecendo duplicado.
@@ -713,4 +721,158 @@ export function buildDtSwapEmail(
     `Transporte novo: ${swap.newDt}`,
   ].join("\n");
   return { subject, body };
+}
+
+/* ------------------------------------------------------------------ */
+/* Agenda do Faturamento -> confirmação da Remessa                     */
+/* ------------------------------------------------------------------ */
+
+export interface ParsedAgenda {
+  load_date: string;
+  load_number: string;
+  origin: string;
+  destination: string;
+  destination_code: string;
+  /** DT: chave do casamento entre agenda e Remessa. */
+  dt: string;
+  pallets: number;
+  products: { code: string; description: string; boxes: number }[];
+  warnings: string[];
+}
+
+/** A agenda escreve "Definir" e "-" no lugar de vazio. */
+const agendaBlank = (v: unknown) => {
+  const t = String(v ?? "").trim();
+  if (!t || t === "-" || t === "—" || /^definir$/i.test(t) || /^#N\/?D$/i.test(t)) return "";
+  return t;
+};
+
+/**
+ * Lê a aba "Programação" da agenda. Na agenda uma carga com vários produtos
+ * ocupa VÁRIAS linhas com o mesmo DT — agrupamos por N° da Carga e o DT
+ * é único por carga (se divergir entre linhas, vira aviso).
+ */
+export function parseAgenda(rows: unknown[][]): { loads: ParsedAgenda[]; errors: string[] } {
+  const errors: string[] = [];
+  const HEAD = {
+    data: ["data"],
+    carga: ["n° da carga", "n da carga", "nº da carga", "carga"],
+    origem: ["origem"],
+    destino_code: ["destino"],
+    destino: ["destino.1", "destino 2"],
+    sku: ["sku"],
+    descricao: ["descrição", "descricao"],
+    caixas: ["cxs progr. arred.", "cxs progr", "caixas"],
+    pallets: ["pallets", "paletes"],
+    transporte: ["transporte", "dt"],
+  };
+
+  // Acha a linha de cabeçalho.
+  let h = -1;
+  for (let i = 0; i < rows.length; i++) {
+    const cells = (rows[i] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
+    if (cells.includes("data") && cells.some((c) => c.includes("carga"))) { h = i; break; }
+  }
+  if (h < 0) {
+    return { loads: [], errors: ["Cabeçalho da agenda não encontrado (aba Programação)."] };
+  }
+
+  const header = (rows[h] ?? []).map((c) => String(c ?? "").trim());
+  const idx = (names: string[]) => {
+    for (const n of names) {
+      const i = header.findIndex((c) => c.toLowerCase() === n);
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+  const col = {
+    data: idx(HEAD.data), carga: idx(HEAD.carga), origem: idx(HEAD.origem),
+    destino_code: idx(HEAD.destino_code), sku: idx(HEAD.sku),
+    descricao: idx(HEAD.descricao), caixas: idx(HEAD.caixas),
+    pallets: idx(HEAD.pallets), transporte: idx(HEAD.transporte),
+  };
+  // "Destino" aparece duas vezes: a 2ª é o nome da praça.
+  const destNameCols = header
+    .map((c, i) => (c.toLowerCase() === "destino" ? i : -1))
+    .filter((i) => i >= 0);
+  const destName = destNameCols.length > 1 ? destNameCols[1]! : destNameCols[0] ?? -1;
+
+  if (col.carga < 0 || col.transporte < 0) {
+    return { loads: [], errors: ["Colunas 'N° da Carga' ou 'Transporte' não encontradas."] };
+  }
+
+  const byNumber = new Map<string, ParsedAgenda>();
+  const at = (row: unknown[], i: number) => (i >= 0 ? agendaBlank(row[i]) : "");
+
+  for (let r = h + 1; r < rows.length; r++) {
+    const row = rows[r] ?? [];
+    const number = at(row, col.carga);
+    if (!number) continue;
+    const code = at(row, col.sku);
+    const desc = at(row, col.descricao);
+    if (!code && !desc) continue;
+
+    const dt = at(row, col.transporte).replace(/\D/g, "");
+    const boxes = Number(at(row, col.caixas).replace(/\./g, "").replace(",", ".")) || 0;
+    const linePallets = Number(at(row, col.pallets).replace(/\./g, "").replace(",", ".")) || 0;
+
+    let load = byNumber.get(number);
+    if (!load) {
+      load = {
+        load_date: toISODateAgenda(at(row, col.data)),
+        load_number: number,
+        origin: at(row, col.origem),
+        destination: at(row, destName),
+        destination_code: at(row, col.destino_code).toUpperCase(),
+        dt,
+        pallets: 0,
+        products: [],
+        warnings: [],
+      };
+      byNumber.set(number, load);
+    } else if (dt && load.dt && dt !== load.dt) {
+      load.warnings.push(`DT divergente na agenda: ${load.dt} x ${dt}`);
+    }
+    // Pallets vêm repetidos nas linhas da carga: vale o maior.
+    if (linePallets > load.pallets) load.pallets = linePallets;
+    load.products.push({ code, description: desc, boxes });
+  }
+
+  const loads = [...byNumber.values()];
+  for (const l of loads) {
+    if (!l.dt) l.warnings.push("DT ausente na agenda");
+    if (!l.origin) l.warnings.push("Origem ausente");
+    if (!l.products.length) l.warnings.push("Nenhum produto");
+  }
+  return { loads, errors };
+}
+
+/** Data da agenda pode vir como Date do Excel ou texto ISO. */
+function toISODateAgenda(raw: string): string {
+  if (!raw) return todayISO();
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  return toISODate(raw) || todayISO();
+}
+
+/** Compara o que a Remessa mandou com o que a agenda tinha: "de -> para". */
+export function diffAgendaProducts(
+  agenda: { code: string; boxes: number }[],
+  remessa: { code: string; boxes: number }[],
+): string[] {
+  const out: string[] = [];
+  const rem = new Map(remessa.map((p) => [p.code, p.boxes]));
+  for (const a of agenda) {
+    if (!rem.has(a.code)) {
+      out.push(`${a.code}: agenda ${a.boxes} cx, não veio na Remessa`);
+    } else if (rem.get(a.code) !== a.boxes) {
+      out.push(`${a.code}: ${a.boxes} cx -> ${rem.get(a.code)} cx`);
+    }
+  }
+  for (const r of remessa) {
+    if (!agenda.some((a) => a.code === r.code)) {
+      out.push(`${r.code}: não estava na agenda (${r.boxes} cx)`);
+    }
+  }
+  return out;
 }
