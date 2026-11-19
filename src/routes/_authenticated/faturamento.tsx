@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Download, Truck } from "lucide-react";
+import { CalendarPlus, Download, Truck } from "lucide-react";
 import { AccountShell } from "@/components/cargo/AccountShell";
 import { AppHeader } from "@/components/cargo/AppHeader";
 import { LoadModal } from "@/components/cargo/LoadModal";
@@ -11,6 +11,7 @@ import { HistoryStrip } from "@/components/cargo/HistoryStrip";
 import { SearchBox } from "@/components/cargo/SearchBox";
 import { Button } from "@/components/ui/button";
 import { PlateHistory } from "@/components/cargo/PlateHistory";
+import { AgendaImportDialog } from "@/components/cargo/AgendaImportDialog";
 import { useLoadLocks, useLoadsRange, useNow, useUpdateLoad } from "@/hooks/use-loads";
 import { getCurrentUser } from "@/lib/auth";
 import { fetchClients, fetchContacts } from "@/lib/cargo-api";
@@ -69,6 +70,7 @@ function Faturamento() {
   const [batch, setBatch] = useState<{ to: string[]; cc: string[]; carrier: string } | null>(null);
   /** E-mail da transportadora escolhido no modal de CT-e. */
   const [cteFrom, setCteFrom] = useState("");
+  const [agendaOpen, setAgendaOpen] = useState(false);
   /** Troca de DT formalizada por e-mail: DT antigo x novo. */
   const [dtSwap, setDtSwap] = useState<{
     oldDt: string;
@@ -230,6 +232,9 @@ function Faturamento() {
         <Button size="sm" variant="secondary" onClick={exportLiquidacao}>
           <Download className="h-4 w-4" /> Liquidação
         </Button>
+        <Button size="sm" variant="secondary" onClick={() => setAgendaOpen(true)}>
+          <CalendarPlus className="h-4 w-4" /> Importar agenda
+        </Button>
       </AppHeader>
       <main className="mx-auto max-w-[1500px] space-y-6 p-4 md:p-6">
         <SearchBox value={q} onChange={setQ} />
@@ -321,6 +326,11 @@ function Faturamento() {
           </div>
         )}
       </main>
+      <AgendaImportDialog
+        open={agendaOpen}
+        onOpenChange={setAgendaOpen}
+        uploadedBy={me?.display_name ?? me?.email ?? undefined}
+      />
       <DtSwapDialog
         swap={dtSwap}
         contacts={contacts}
