@@ -11,39 +11,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
-import {
-  diffAgendaProducts,
-  fmtNum,
-  formatPlateLine,
-  parseCargoText,
-  type ParsedLoad,
-} from "@/lib/cargo";
-import {
-  confirmFromRemessa,
-  matchAgendaByDt,
-  platePalletAlert,
-} from "@/lib/cargo-api";
+import { checkBoxes, fmtNum, parseCargoText, formatPlateLine, type ParsedLoad } from "@/lib/cargo";
+import { fetchCatalog, importLoads } from "@/lib/cargo-api";
 import { supabase } from "@/integrations/supabase/client";
-import { cn } from "@/lib/utils";
 
-interface MatchRow {
-  load: ParsedLoad;
-  /** Carga já criada pela agenda, achada pelo DT. */
-  agendaLoadId: string | null;
-  diff: string[];
-  palletAlert: string | null;
-  /** Veio da Remessa e não estava na agenda. */
-  outside: boolean;
-}
-
-/**
- * Importação da Remessa quando a Sincronização da Agenda está ligada.
- * Casa pelo DT com o que o Faturamento já subiu: completa placa e
- * transportadora, anota divergência e avisa sobre pallets — sem bloquear.
- * Carga que não existe na agenda é criada igual, marcada como fora da agenda.
- */
-export function ImportAgendaDialog({
+export function ImportTextDialog({
   open,
   onOpenChange,
 }: {
@@ -52,106 +24,43 @@ export function ImportAgendaDialog({
 }) {
   const qc = useQueryClient();
   const [text, setText] = useState("");
-  const [rows, setRows] = useState<MatchRow[] | null>(null);
+  const [review, setReview] = useState<(ParsedLoad & { duplicate: boolean })[] | null>(null);
+  const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   const analyze = async () => {
     const { loads, errors } = parseCargoText(text);
-    if (errors.length) toast.error(errors[0]!);
-    if (!loads.length) {
-      setRows([]);
-      return;
-    }
-
-    const dts = loads.map((l) => l.dt).filter(Boolean);
-    const matches = await matchAgendaByDt(dts).catch(() => []);
-    const byDt = new Map(matches.map((m) => [m.dt, m]));
-
-    const built: MatchRow[] = [];
-    for (const l of loads) {
-      const m = byDt.get(l.dt);
-      // Divergência de produto: o app não sobrescreve o que a agenda trouxe.
-      let diff: string[] = [];
-      if (m) {
-        const { data: prods } = await supabase
-          .from("cargo_products")
-          .select("code, boxes")
-          .eq("load_id", m.load_id);
-        diff = diffAgendaProducts(
-          (prods ?? []).map((p) => ({ code: p.code ?? "", boxes: Number(p.boxes ?? 0) })),
-          l.products.map((p) => ({ code: p.code, boxes: p.boxes })),
-        );
-      }
-      const palletAlert = l.plate ? await platePalletAlert(l.plate).catch(() => null) : null;
-      built.push({
-        load: l,
-        agendaLoadId: m?.load_id ?? null,
-        diff,
-        palletAlert,
-        outside: !m,
-      });
-    }
-    setRows(built);
+    setErrors(errors);
+    if (!loads.length) return setReview([]);
+    const { data } = await supabase
+      .from("cargo_loads")
+      .select("load_date, load_number")
+      .in(
+        "load_number",
+        loads.map((l) => l.load_number),
+      );
+    const catalog = await fetchCatalog().catch(() => []);
+    loads.forEach((l) => l.warnings.push(...checkBoxes(l.products, catalog.map((c) => ({ ...c, boxes_per_pallet: Number(c.boxes_per_pallet) })))));
+    const existing = new Set((data ?? []).map((d) => `${d.load_date}|${d.load_number}`));
+    setReview(
+      loads.map((l) => ({ ...l, duplicate: existing.has(`${l.load_date}|${l.load_number}`) })),
+    );
   };
 
   const save = async () => {
-    if (!rows) return;
+    if (!review) return;
     setSaving(true);
     try {
-      let confirmed = 0;
-      let created = 0;
-
-      for (const r of rows) {
-        const l = r.load;
-        if (r.agendaLoadId) {
-          await confirmFromRemessa(
-            l.dt, l.plate, l.carrier, "remessa",
-            r.diff.length ? `Divergências: ${r.diff.join("; ")}` : undefined,
-          );
-          confirmed++;
-        } else {
-          // Não estava na agenda: cria normalmente e marca em laranja.
-          const { data, error } = await supabase
-            .from("cargo_loads")
-            .insert({
-              load_date: l.load_date,
-              load_number: l.load_number,
-              origin: l.origin,
-              destination: l.destination,
-              destination_code: l.destination_code || null,
-              carrier: l.carrier,
-              plate: l.plate,
-              dt: l.dt || null,
-              pallets: l.pallets,
-              status: "pendente",
-              source: "texto",
-              outside_agenda: true,
-              pallet_alert: !!r.palletAlert,
-              pallet_alert_text: r.palletAlert,
-            })
-            .select("id")
-            .single();
-          if (error) {
-            if (error.code === "23505") continue;
-            throw error;
-          }
-          if (l.products.length) {
-            await supabase.from("cargo_products").insert(
-              l.products.map((p) => ({
-                code: p.code, description: p.description, boxes: p.boxes, load_id: data.id,
-              })),
-            );
-          }
-          created++;
-        }
-      }
-
+      const { inserted, skipped } = await importLoads(
+        review.filter((l) => !l.duplicate),
+        "texto",
+      );
       toast.success(
-        `${confirmed} carga(s) confirmada(s) na agenda · ${created} criada(s) fora da agenda`,
+        `${inserted} carga(s) importada(s) como Pendente${skipped.length ? ` · ${skipped.length} duplicada(s) ignorada(s)` : ""}`,
       );
       qc.invalidateQueries({ queryKey: ["loads"] });
       setText("");
-      setRows(null);
+      setReview(null);
       onOpenChange(false);
     } catch (e) {
       toast.error((e as Error).message);
@@ -160,23 +69,17 @@ export function ImportAgendaDialog({
     }
   };
 
-  const alerts = rows?.filter((r) => r.diff.length || r.palletAlert) ?? [];
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-display text-2xl">
-            Importar cargas — conferência com a agenda
+            Importar cargas (colar e-mail / planilha)
           </DialogTitle>
         </DialogHeader>
-
-        {!rows ? (
+        {!review ? (
           <>
-            <p className="text-sm text-muted-foreground">
-              Cole as linhas da Remessa. O app procura cada carga pelo <strong>DT</strong> na agenda
-              do Faturamento e completa placa e transportadora.
-            </p>
+            <p className="text-sm text-muted-foreground">Insira as cargas — cole as linhas da planilha.</p>
             <Textarea
               rows={12}
               value={text}
@@ -185,82 +88,67 @@ export function ImportAgendaDialog({
               className="font-mono text-xs"
             />
             <DialogFooter>
-              <Button onClick={analyze} disabled={!text.trim()}>Analisar</Button>
+              <Button onClick={analyze} disabled={!text.trim()}>
+                Analisar
+              </Button>
             </DialogFooter>
           </>
         ) : (
           <>
-            <p className="text-sm">
-              <strong>{rows.length}</strong> carga(s) lida(s) ·{" "}
-              <strong>{rows.filter((r) => !r.outside).length}</strong> casaram com a agenda ·{" "}
-              <strong>{rows.filter((r) => r.outside).length}</strong> fora da agenda
-            </p>
-
-            {alerts.length > 0 && (
-              <div className="rounded-md border border-amber-400/60 bg-amber-50 p-3 text-sm text-amber-900">
-                <div className="mb-1 flex items-center gap-2 font-semibold">
-                  <AlertTriangle className="h-4 w-4" /> Divergências e avisos de pallets
-                </div>
-                <ul className="list-disc space-y-1 pl-5">
-                  {alerts.map((r) => (
-                    <li key={r.load.load_number}>
-                      Carga {r.load.load_number}
-                      {r.palletAlert ? ` · ${r.palletAlert}` : ""}
-                      {r.diff.length > 0 && <> · {r.diff.join("; ")}</>}
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-1 text-xs">Nada é bloqueado — os avisos ficam registrados.</p>
+            {errors.map((e) => (
+              <div key={e} className="rounded bg-destructive/10 p-2 text-sm text-destructive">
+                {e}
               </div>
-            )}
-
+            ))}
             <div className="space-y-2">
-              {rows.map((r) => (
+              {review.map((l) => (
                 <div
-                  key={r.load.load_number}
-                  className={cn(
-                    "rounded-md border p-3",
-                    r.outside && "border-orange-300 bg-orange-50",
-                  )}
+                  key={l.load_number}
+                  className={`rounded-md border p-3 ${l.duplicate ? "opacity-60" : ""}`}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <span className="font-display text-lg font-bold">Carga {r.load.load_number}</span>
+                      <span className="font-display text-lg font-bold">Carga {l.load_number}</span>
                       <span className="ml-2 text-xs text-muted-foreground">
-                        {r.load.load_date.split("-").reverse().join("/")}
+                        {l.load_date.split("-").reverse().join("/")}
                       </span>
                     </div>
-                    <span
-                      className={cn(
-                        "rounded px-2 py-0.5 text-xs font-semibold",
-                        r.outside ? "bg-orange-200 text-orange-900" : "bg-muted",
-                      )}
-                    >
-                      {r.outside ? "Fora da agenda" : "Confirmada na agenda"}
-                    </span>
+                    {l.duplicate && (
+                      <span className="rounded bg-muted px-2 py-0.5 text-xs font-semibold">
+                        Já existe — será ignorada
+                      </span>
+                    )}
                   </div>
                   <div className="font-mono text-xs text-muted-foreground">
-                    {formatPlateLine(r.load, "remessa")}
-                    {r.load.dt ? ` · DT ${r.load.dt}` : ""}
+                    {formatPlateLine(l, "remessa")}
+                    {l.dt ? ` · DT ${l.dt}` : ""}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {r.load.origin} → {r.load.destination_code ? `${r.load.destination_code} ` : ""}
-                    {r.load.destination} · {fmtNum(r.load.pallets)} pallets ·{" "}
-                    {r.load.products.length} produto(s)
+                    {l.origin} → {l.destination_code ? `${l.destination_code} ` : ""}
+                    {l.destination} · {fmtNum(l.pallets)} pallets · {l.products.length} produto(s) ·{" "}
+                    {fmtNum(l.products.reduce((s, p) => s + p.boxes, 0))} caixas
                   </div>
-                  {r.diff.length > 0 && (
-                    <ul className="mt-1 space-y-0.5 text-xs text-amber-800">
-                      {r.diff.map((d) => <li key={d}>• {d}</li>)}
+                  {l.warnings.length > 0 && (
+                    <ul className="mt-1 space-y-0.5">
+                      {l.warnings.map((w) => (
+                        <li
+                          key={w}
+                          className="flex items-center gap-1 text-xs font-semibold text-warning-foreground"
+                        >
+                          <AlertTriangle className="h-3 w-3 text-warning" /> {w}
+                        </li>
+                      ))}
                     </ul>
                   )}
                 </div>
               ))}
             </div>
-
             <DialogFooter>
-              <Button variant="outline" onClick={() => setRows(null)}>Voltar e editar</Button>
-              <Button onClick={save} disabled={saving || !rows.length}>
-                {saving ? "Gravando…" : "Gravar"}
+              <Button variant="outline" onClick={() => setReview(null)}>
+                Voltar e editar
+              </Button>
+              <Button onClick={save} disabled={saving || !review.some((l) => !l.duplicate)}>
+                Gravar {review.filter((l) => !l.duplicate).length} carga(s)
               </Button>
             </DialogFooter>
           </>
