@@ -10,17 +10,25 @@ import { deleteContact, fetchContacts, saveContact, type ContactKind } from "@/l
 export function ContactsSection() {
   const qc = useQueryClient();
   const { data = [] } = useQuery({ queryKey: ["contacts"], queryFn: fetchContacts });
-  const groups = useMemo(() => {
-    const m = new Map<string, typeof data>();
-    for (const c of data) {
-      const k = c.kind === "to_fixed" ? "Para (fixo)" : c.kind === "cc_fixed" ? "Cópia (fixo)" : (c.carrier ?? "—").toUpperCase();
-      m.set(k, [...(m.get(k) ?? []), c]);
-    }
-    return [...m.entries()].sort((a, b) => (a[0].includes("fixo") ? -1 : b[0].includes("fixo") ? 1 : a[0].localeCompare(b[0])));
-  }, [data]);
   const [kind, setKind] = useState<ContactKind>("carrier");
   const [carrier, setCarrier] = useState("");
   const [email, setEmail] = useState("");
+  /** Qual grupo aparece: "to_fixed", "cc_fixed" ou o nome de uma transportadora. */
+  const [view, setView] = useState<string>("to_fixed");
+
+  const carriers = useMemo(
+    () => [...new Set(data.filter((c) => c.kind === "carrier").map((c) => (c.carrier ?? "").toUpperCase()))]
+      .filter(Boolean)
+      .sort(),
+    [data],
+  );
+
+  /** Só o que foi selecionado — o div não cresce com a lista inteira. */
+  const visible = useMemo(() => {
+    if (view === "to_fixed" || view === "cc_fixed")
+      return data.filter((c) => c.kind === view);
+    return data.filter((c) => c.kind === "carrier" && (c.carrier ?? "").toUpperCase() === view);
+  }, [data, view]);
   const run = async (fn: () => Promise<void>) => {
     try { await fn(); await qc.invalidateQueries({ queryKey: ["contacts"] }); } catch (e) { toast.error((e as Error).message); }
   };
@@ -40,20 +48,39 @@ export function ContactsSection() {
           <Plus className="h-4 w-4" /> Adicionar
         </Button>
       </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {groups.map(([g, list]) => (
-          <div key={g} className="rounded-md border p-2">
-            <div className="mb-1 text-sm font-semibold">{g} <span className="font-normal text-muted-foreground">· {list.length}</span></div>
-            <div className="flex flex-wrap gap-1">
-              {list.map((c) => (
-                <span key={c.id} className="flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs">
-                  {c.email}
-                  <button type="button" aria-label={`Remover ${c.email}`} onClick={() => void run(() => deleteContact(c.id))}><X className="h-3 w-3" /></button>
-                </span>
-              ))}
-            </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-muted-foreground">Ver:</span>
+        <select
+          value={view}
+          onChange={(e) => setView(e.target.value)}
+          className="h-9 rounded-md border bg-background px-2 text-sm"
+        >
+          <option value="to_fixed">Para (fixo)</option>
+          <option value="cc_fixed">Cópia (fixo)</option>
+          {carriers.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+        <span className="text-xs text-muted-foreground">{visible.length} e-mail(s)</span>
+      </div>
+
+      <div className="rounded-md border p-2">
+        {visible.length === 0 ? (
+          <p className="py-2 text-center text-sm text-muted-foreground">
+            Nenhum e-mail neste grupo.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1">
+            {visible.map((c) => (
+              <span key={c.id} className="flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs">
+                {c.email}
+                <button type="button" aria-label={`Remover ${c.email}`} onClick={() => void run(() => deleteContact(c.id))}>
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
           </div>
-        ))}
+        )}
       </div>
     </section>
   );
