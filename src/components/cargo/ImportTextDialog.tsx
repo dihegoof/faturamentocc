@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AlertTriangle } from "lucide-react";
 import {
@@ -11,8 +11,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { checkBoxes, fmtNum, parseCargoText, formatPlateLine, type ParsedLoad } from "@/lib/cargo";
-import { fetchCatalog, importLoads } from "@/lib/cargo-api";
+import { checkBoxes, diffAgendaProducts, fmtNum, parseCargoText, formatPlateLine, type ParsedLoad } from "@/lib/cargo";
+import { agendaSyncOn, confirmFromRemessa, fetchCatalog, importLoads, matchAgendaByDt, platePalletAlert } from "@/lib/cargo-api";
 import { supabase } from "@/integrations/supabase/client";
 
 export function ImportTextDialog({
@@ -24,14 +24,62 @@ export function ImportTextDialog({
 }) {
   const qc = useQueryClient();
   const [text, setText] = useState("");
-  const [review, setReview] = useState<(ParsedLoad & { duplicate: boolean })[] | null>(null);
+  type ReviewRow = ParsedLoad & {
+    duplicate: boolean;
+    /** DT da agenda: existe = a Remessa confirma; null = carga nova. */
+    agendaLoadId: string | null;
+    diff: string[];
+    palletAlert: string | null;
+  };
+  const [review, setReview] = useState<ReviewRow[] | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  /** Ligada, "já existe" deixa de ser duplicata e passa a ser casamento. */
+  const { data: agendaOn = false } = useQuery({ queryKey: ["agenda-sync"], queryFn: agendaSyncOn });
 
   const analyze = async () => {
     const { loads, errors } = parseCargoText(text);
     setErrors(errors);
     if (!loads.length) return setReview([]);
+
+    const catalog = await fetchCatalog().catch(() => []);
+    loads.forEach((l) =>
+      l.warnings.push(
+        ...checkBoxes(
+          l.products,
+          catalog.map((c) => ({ ...c, boxes_per_pallet: Number(c.boxes_per_pallet) })),
+        ),
+      ),
+    );
+
+    // Com a Sincronização da Agenda ligada, o casamento é pelo DT: a carga
+    // já existe de propósito, e a Remessa vem completar placa/transportadora.
+    if (agendaOn) {
+      const dts = loads.map((l) => l.dt).filter(Boolean);
+      const matches = await matchAgendaByDt(dts).catch(() => []);
+      const byDt = new Map(matches.map((m) => [m.dt, m]));
+
+      const rows: ReviewRow[] = [];
+      for (const l of loads) {
+        const m = byDt.get(l.dt);
+        let diff: string[] = [];
+        if (m) {
+          const { data: prods } = await supabase
+            .from("cargo_products")
+            .select("code, boxes")
+            .eq("load_id", m.load_id);
+          diff = diffAgendaProducts(
+            (prods ?? []).map((p) => ({ code: p.code ?? "", boxes: Number(p.boxes ?? 0) })),
+            l.products.map((p) => ({ code: p.code, boxes: p.boxes })),
+          );
+        }
+        const palletAlert = l.plate ? await platePalletAlert(l.plate).catch(() => null) : null;
+        rows.push({ ...l, duplicate: false, agendaLoadId: m?.load_id ?? null, diff, palletAlert });
+      }
+      setReview(rows);
+      return;
+    }
+
     const { data } = await supabase
       .from("cargo_loads")
       .select("load_date, load_number")
@@ -39,11 +87,15 @@ export function ImportTextDialog({
         "load_number",
         loads.map((l) => l.load_number),
       );
-    const catalog = await fetchCatalog().catch(() => []);
-    loads.forEach((l) => l.warnings.push(...checkBoxes(l.products, catalog.map((c) => ({ ...c, boxes_per_pallet: Number(c.boxes_per_pallet) })))));
     const existing = new Set((data ?? []).map((d) => `${d.load_date}|${d.load_number}`));
     setReview(
-      loads.map((l) => ({ ...l, duplicate: existing.has(`${l.load_date}|${l.load_number}`) })),
+      loads.map((l) => ({
+        ...l,
+        duplicate: existing.has(`${l.load_date}|${l.load_number}`),
+        agendaLoadId: null,
+        diff: [],
+        palletAlert: null,
+      })),
     );
   };
 
@@ -51,6 +103,34 @@ export function ImportTextDialog({
     if (!review) return;
     setSaving(true);
     try {
+      // Fluxo da agenda: confirma as casadas e cria as que vieram de fora.
+      if (agendaOn) {
+        let confirmed = 0;
+        let created = 0;
+        for (const r of review) {
+          if (r.agendaLoadId) {
+            await confirmFromRemessa(
+              r.dt, r.plate, r.carrier, "remessa",
+              r.diff.length ? `Divergências: ${r.diff.join("; ")}` : undefined,
+            );
+            confirmed++;
+          }
+        }
+        const novas = review.filter((r) => !r.agendaLoadId);
+        if (novas.length) {
+          const { inserted } = await importLoads(novas, "texto");
+          created = inserted;
+        }
+        toast.success(
+          `${confirmed} carga(s) confirmada(s) na agenda${created ? ` · ${created} criada(s) fora da agenda` : ""}`,
+        );
+        qc.invalidateQueries({ queryKey: ["loads"] });
+        setText("");
+        setReview(null);
+        onOpenChange(false);
+        return;
+      }
+
       const { inserted, skipped } = await importLoads(
         review.filter((l) => !l.duplicate),
         "texto",
@@ -113,7 +193,17 @@ export function ImportTextDialog({
                         {l.load_date.split("-").reverse().join("/")}
                       </span>
                     </div>
-                    {l.duplicate && (
+                    {agendaOn && l.agendaLoadId && (
+                      <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-900">
+                        Confirma na agenda
+                      </span>
+                    )}
+                    {agendaOn && !l.agendaLoadId && (
+                      <span className="rounded bg-orange-200 px-2 py-0.5 text-xs font-semibold text-orange-900">
+                        Fora da agenda — será criada
+                      </span>
+                    )}
+                    {!agendaOn && l.duplicate && (
                       <span className="rounded bg-muted px-2 py-0.5 text-xs font-semibold">
                         Já existe — será ignorada
                       </span>
@@ -128,6 +218,14 @@ export function ImportTextDialog({
                     {l.destination} · {fmtNum(l.pallets)} pallets · {l.products.length} produto(s) ·{" "}
                     {fmtNum(l.products.reduce((s, p) => s + p.boxes, 0))} caixas
                   </div>
+                  {l.diff.length > 0 && (
+                    <ul className="mt-1 space-y-0.5 text-xs font-semibold text-amber-800">
+                      {l.diff.map((d) => <li key={d}>• {d}</li>)}
+                    </ul>
+                  )}
+                  {l.palletAlert && (
+                    <p className="mt-1 text-xs font-semibold text-amber-800">• {l.palletAlert}</p>
+                  )}
                   {l.warnings.length > 0 && (
                     <ul className="mt-1 space-y-0.5">
                       {l.warnings.map((w) => (
@@ -147,9 +245,17 @@ export function ImportTextDialog({
               <Button variant="outline" onClick={() => setReview(null)}>
                 Voltar e editar
               </Button>
-              <Button onClick={save} disabled={saving || !review.some((l) => !l.duplicate)}>
-                Gravar {review.filter((l) => !l.duplicate).length} carga(s)
-              </Button>
+              {agendaOn ? (
+                <Button onClick={save} disabled={saving || !review.length}>
+                  {saving
+                    ? "Gravando…"
+                    : `Confirmar ${review.filter((l) => l.agendaLoadId).length} e criar ${review.filter((l) => !l.agendaLoadId).length}`}
+                </Button>
+              ) : (
+                <Button onClick={save} disabled={saving || !review.some((l) => !l.duplicate)}>
+                  Gravar {review.filter((l) => !l.duplicate).length} carga(s)
+                </Button>
+              )}
             </DialogFooter>
           </>
         )}
