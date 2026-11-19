@@ -462,7 +462,7 @@ export function downloadCSV(name: string, rows: Record<string, unknown>[]) {
 /** CT-e manual e-mail. Several loads of the same carrier share one e-mail. */
 export function buildCteEmail(
   loads: Pick<CargoLoad, "dt" | "plate" | "carrier">[],
-  options: { mdfe?: boolean; carrier?: string | null; to?: string[] } = {},
+  options: { carrier?: string | null; to?: string[] } = {},
   greeting = new Date().getHours() < 12 ? "Bom dia" : "Boa tarde",
 ) {
   const plates = loads.map((l) => normalizePlate(l.plate ?? "") || "—");
@@ -483,7 +483,7 @@ export function buildCteEmail(
     "",
     data,
     "",
-    "[Evidência do Triangulus]",
+    "(Colar evidência do Triangulus)",
   ].join("\n");
   return { subject: `Emissão CTe manual - ${plates.join(", ")}`, body };
 }
@@ -679,15 +679,17 @@ export function buildDtSwapEmail(
     mdfe?: boolean;
     motivo?: string;
     nfs?: string;
-    to?: string[];
+    /** E-mail escolhido no modal: é ele que vira a menção da 2ª linha. */
+    mention?: string;
   },
   greeting = new Date().getHours() < 12 ? "Bom dia" : "Boa tarde",
 ): { subject: string; body: string } {
   const carrier = (swap.carrier ?? "").trim();
   const subject = `Troca de DT: ${swap.newDt} | ${carrier.toUpperCase()}`;
   const motivo = (swap.motivo ?? "").trim() || "faturamento inverter SKU";
-  const carrierMention = swap.to?.length
-    ? swap.to.map((e) => `<mailto:${e}|${e}>`).join(", ")
+  // A 2ª linha cita só o e-mail que o usuário selecionou no modal.
+  const carrierMention = swap.mention?.trim()
+    ? `<mailto:${swap.mention.trim()}|${swap.mention.trim()}>`
     : `<${carrier}>`;
 
   // Torre sempre; a transportadora só quando há MDF-e a cancelar.
