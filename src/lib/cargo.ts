@@ -777,10 +777,10 @@ export function parseAgenda(rows: unknown[][]): { loads: ParsedAgenda[]; errors:
     return { loads: [], errors: ["Cabeçalho da agenda não encontrado (aba Programação)."] };
   }
 
-  const header = (rows[h] ?? []).map((c) => String(c ?? "").trim());
+  const header = (rows[h] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
   const idx = (names: string[]) => {
     for (const n of names) {
-      const i = header.findIndex((c) => c.toLowerCase() === n);
+      const i = header.indexOf(n);
       if (i >= 0) return i;
     }
     return -1;
@@ -793,7 +793,7 @@ export function parseAgenda(rows: unknown[][]): { loads: ParsedAgenda[]; errors:
   };
   // "Destino" aparece duas vezes: a 2ª é o nome da praça.
   const destNameCols = header
-    .map((c, i) => (c.toLowerCase() === "destino" ? i : -1))
+    .map((c, i) => (c === "destino" ? i : -1))
     .filter((i) => i >= 0);
   const destName = destNameCols.length > 1 ? destNameCols[1]! : destNameCols[0] ?? -1;
 
