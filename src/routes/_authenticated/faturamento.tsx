@@ -14,7 +14,7 @@ import { PlateHistory } from "@/components/cargo/PlateHistory";
 import { AgendaImportDialog } from "@/components/cargo/AgendaImportDialog";
 import { useLoadLocks, useLoadsRange, useNow, useUpdateLoad } from "@/hooks/use-loads";
 import { getCurrentUser } from "@/lib/auth";
-import { fetchClients, fetchContacts } from "@/lib/cargo-api";
+import { agendaSyncOn, fetchClients, fetchContacts } from "@/lib/cargo-api";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -71,6 +71,8 @@ function Faturamento() {
   /** E-mail da transportadora escolhido no modal de CT-e. */
   const [cteFrom, setCteFrom] = useState("");
   const [agendaOpen, setAgendaOpen] = useState(false);
+  /** O botão da agenda só existe quando o sistema está ligado no Painel. */
+  const { data: agendaOn = false } = useQuery({ queryKey: ["agenda-sync"], queryFn: agendaSyncOn });
   /** Troca de DT formalizada por e-mail: DT antigo x novo. */
   const [dtSwap, setDtSwap] = useState<{
     oldDt: string;
@@ -232,9 +234,11 @@ function Faturamento() {
         <Button size="sm" variant="secondary" onClick={exportLiquidacao}>
           <Download className="h-4 w-4" /> Liquidação
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => setAgendaOpen(true)}>
-          <CalendarPlus className="h-4 w-4" /> Importar agenda
-        </Button>
+        {agendaOn && (
+          <Button size="sm" variant="secondary" onClick={() => setAgendaOpen(true)}>
+            <CalendarPlus className="h-4 w-4" /> Importar agenda
+          </Button>
+        )}
       </AppHeader>
       <main className="mx-auto max-w-[1500px] space-y-6 p-4 md:p-6">
         <SearchBox value={q} onChange={setQ} />
