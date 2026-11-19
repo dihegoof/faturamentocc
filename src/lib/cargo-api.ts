@@ -537,3 +537,10 @@ export async function matchAgendaByDt(dts: string[]) {
   if (error) throw error;
   return data as { dt: string; load_id: string; confirmed: boolean }[];
 }
+
+/** Aviso de pallets: maior valor já levado por esta placa (null = sem histórico). */
+export async function platePalletAlert(plate: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc("plate_pallet_alert", { p_plate: plate });
+  if (error) throw error;
+  return (data as string | null) ?? null;
+}
