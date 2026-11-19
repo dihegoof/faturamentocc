@@ -819,7 +819,7 @@ export function parseAgenda(rows: unknown[][]): { loads: ParsedAgenda[]; errors:
     let load = byNumber.get(number);
     if (!load) {
       load = {
-        load_date: toISODateAgenda(at(row, col.data)),
+        load_date: toISODateAgenda(row[col.data]),
         load_number: number,
         origin: at(row, col.origem),
         destination: at(row, destName),
@@ -840,6 +840,10 @@ export function parseAgenda(rows: unknown[][]): { loads: ParsedAgenda[]; errors:
 
   const loads = [...byNumber.values()];
   for (const l of loads) {
+    if (!l.load_date) {
+      l.load_date = todayISO();
+      l.warnings.push("Data ausente na agenda — usando hoje");
+    }
     if (!l.dt) l.warnings.push("DT ausente na agenda");
     if (!l.origin) l.warnings.push("Origem ausente");
     if (!l.products.length) l.warnings.push("Nenhum produto");
@@ -847,12 +851,23 @@ export function parseAgenda(rows: unknown[][]): { loads: ParsedAgenda[]; errors:
   return { loads, errors };
 }
 
-/** Data da agenda pode vir como Date do Excel ou texto ISO. */
-function toISODateAgenda(raw: string): string {
-  if (!raw) return todayISO();
-  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+/**
+ * Data da agenda: pode vir como Date (o leitor converte o serial do Excel),
+ * como número de série cru, ou como texto. Se nada resolver, cai para hoje —
+ * mas o aviso fica registrado na carga.
+ */
+function toISODateAgenda(raw: unknown): string {
+  if (raw instanceof Date && !isNaN(raw.getTime())) {
+    return raw.toISOString().slice(0, 10);
+  }
+  if (typeof raw === "number" && raw > 36526 && raw < 73415) {
+    return new Date(Date.UTC(1899, 11, 30) + raw * 86400000).toISOString().slice(0, 10);
+  }
+  const texto = String(raw ?? "").trim();
+  if (!texto) return "";
+  const iso = texto.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  return toISODate(raw) || todayISO();
+  return toISODate(texto);
 }
 
 /** Compara o que a Remessa mandou com o que a agenda tinha: "de -> para". */
@@ -875,4 +890,39 @@ export function diffAgendaProducts(
     }
   }
   return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* Carga da agenda: bloqueio até ser faturada                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Carga de agenda que ainda não foi confirmada pela Remessa.
+ * Fica bloqueada: não some do histórico, mas não pode ser alterada.
+ */
+export function isAgendaLocked(
+  l: Pick<CargoLoad, "status">,
+): boolean {
+  return l.status === "pendente_remessa";
+}
+
+/**
+ * Carga prevista para depois de hoje: aparece só no histórico e
+ * não pode ser faturada ainda.
+ */
+export function isFutureLoad(
+  l: Pick<CargoLoad, "load_date">,
+  today = todayISO(),
+): boolean {
+  return !!l.load_date && l.load_date > today;
+}
+
+/** Motivo pelo qual a carga não pode ser mexida agora (null = liberada). */
+export function lockReason(
+  l: Pick<CargoLoad, "status" | "load_date">,
+  today = todayISO(),
+): string | null {
+  if (isAgendaLocked(l)) return "Carga ainda não confirmada pela Remessa.";
+  if (isFutureLoad(l, today)) return "Carga prevista para outro dia — não está pronta para faturar.";
+  return null;
 }
