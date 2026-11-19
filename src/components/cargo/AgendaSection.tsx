@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { fetchAgendaImports, importAgenda } from "@/lib/cargo-api";
 import { parseAgenda, type ParsedAgenda } from "@/lib/cargo";
+import { readAgendaSheet } from "@/lib/xlsx-read";
 
 /**
  * Upload da agenda do Faturamento. A carga entra como "Aguardando Remessa":
@@ -38,16 +39,12 @@ export function AgendaSection({ uploadedBy }: { uploadedBy?: string }) {
 
   async function onFile(f: File) {
     try {
-      const xlsx = await import("xlsx");
-      const buf = await f.arrayBuffer();
-      const wb = xlsx.read(buf, { type: "array" });
-      const ws = wb.Sheets["Programação"];
-      if (!ws) {
-        toast.error('A aba "Programação" não existe neste arquivo');
+      const rows = await readAgendaSheet(await f.arrayBuffer());
+      if (!rows.length) {
+        toast.error('A aba "Programação" não foi encontrada neste arquivo');
         return;
       }
-      const rows = xlsx.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true });
-      const { loads, errors } = parseAgenda(rows as unknown[][]);
+      const { loads, errors } = parseAgenda(rows);
       if (errors.length) toast.error(errors[0]!);
       if (!loads.length) {
         toast.error("Nenhuma carga reconhecida na agenda");
