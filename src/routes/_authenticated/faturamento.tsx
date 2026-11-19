@@ -14,10 +14,17 @@ import { PlateHistory } from "@/components/cargo/PlateHistory";
 import { useLoadLocks, useLoadsRange, useNow, useUpdateLoad } from "@/hooks/use-loads";
 import { getCurrentUser } from "@/lib/auth";
 import { fetchClients, fetchContacts } from "@/lib/cargo-api";
+import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   buildCteEmail,
-  canSelectWith,
+  buildDtSwapEmail,
+  carrierMatches,
   cteRecipients,
+  mailtoHref,
+  canSelectWith,
   downloadCSV,
   formatPlateLine,
   importedToday,
@@ -58,7 +65,18 @@ function Faturamento() {
   /** Cargas marcadas no checkbox para entrar no mesmo e-mail de CT-e. */
   const [selected, setSelected] = useState<string[]>([]);
   /** Resultado do último "Solicitar CT-e": destinatários e assunto prontos. */
-  const [batch, setBatch] = useState<{ to: string[]; cc: string[]; subject: string; body: string } | null>(null);
+  const [batch, setBatch] = useState<{ to: string[]; cc: string[]; carrier: string } | null>(null);
+  /** Escolhas do modal de CT-e: MDF-e e o e-mail da transportadora. */
+  const [cteMdfe, setCteMdfe] = useState(false);
+  const [cteFrom, setCteFrom] = useState("");
+  /** Troca de DT formalizada por e-mail: DT antigo x novo. */
+  const [dtSwap, setDtSwap] = useState<{
+    oldDt: string;
+    newDt: string;
+    plate: string | null;
+    carrier: string | null;
+    load: CargoLoad;
+  } | null>(null);
   const locks = useLoadLocks(openId, me?.display_name || me?.email || "Faturamento");
   const today = todayISO();
   const open = range.find((l) => l.id === openId) ?? null;
@@ -69,6 +87,14 @@ function Faturamento() {
   const todays = useMemo(() => range.filter((l) => importedToday(l, today)), [range, today]);
   /** Cargas de dias anteriores que nunca foram finalizadas: pendência de checagem. */
   const pendings = useMemo(() => range.filter((l) => isOverdue(l, today)), [range, today]);
+  /** E-mails cadastrados da transportadora das cargas marcadas. */
+  const carrierEmails = useMemo(
+    () =>
+      contacts.filter(
+        (c) => c.kind === "carrier" && carrierMatches(c.carrier, selectedLoads[0] ? carrierOf(selectedLoads[0]) : ""),
+      ),
+    [contacts, selectedLoads],
+  );
   const selectedLoads = useMemo(
     () => selected.map((id) => range.find((l) => l.id === id)).filter(Boolean) as CargoLoad[],
     [selected, range],
@@ -103,29 +129,35 @@ function Faturamento() {
       return;
     }
     const carrier = carrierOf(selectedLoads[0]!);
-    const { to, cc } = cteRecipients(contacts, carrier);
+    const { to } = cteRecipients(contacts, carrier);
     if (!to.length) {
       toast.error(`Nenhum e-mail cadastrado para ${carrier || "esta transportadora"}`);
       return;
     }
+    setCteMdfe(false);
+    setCteFrom("");
+    setBatch({ to, cc: [], carrier });
+  };
+
+  /** Monta o e-mail de CT-e com as escolhas do modal e abre no Outlook. */
+  const openCteMail = () => {
+    if (!batch) return;
+    const chosen = cteFrom ? [cteFrom] : carrierEmails.map((c) => c.email);
+    const to = [...chosen, ...batch.to.filter((e) => !chosen.includes(e))];
+    const { cc } = cteRecipients(contacts, batch.carrier);
     const { subject, body } = buildCteEmail(
       selectedLoads.map((l) => ({ carrier: carrierOf(l), plate: l.plate ?? "", dt: l.dt ?? "" })),
+      { mdfe: cteMdfe, carrier: batch.carrier, to },
     );
-    setBatch({ to, cc, subject, body });
+    window.location.href = mailtoHref(to, cc, subject, body);
+    setBatch(null);
+    setSelected([]);
   };
 
-  const confirmCte = async () => {
-    if (!batch) return;
-    const text = `Para: ${batch.to.join("; ")}\n${batch.cc.length ? `Cópia: ${batch.cc.join("; ")}\n` : ""}Assunto: ${batch.subject}\n\n${batch.body}`;
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.success("E-mail copiado — cole no Outlook");
-    } catch {
-      toast.error("Não foi possível copiar; selecione o texto abaixo");
-    }
-  };
-
-  const tile = (l: CargoLoad) => (
+  const tile = (l: CargoLoad) => {
+    /** Alguém está com esta carga aberta: o card fica opaco e sem clique. */
+    const locked = !!locks[l.id];
+    return (
     <div className="flex items-start gap-1.5">
       <LoadTile
         load={l}
@@ -133,8 +165,9 @@ function Faturamento() {
         now={now}
         lockedBy={locks[l.id]}
         colored={importedToday(l, today)}
-        onOpen={() => setOpenId(l.id)}
-        className="min-w-0 flex-1"
+        onOpen={() => { if (!locked) setOpenId(l.id); }}
+        className={cn("min-w-0 flex-1", locked && "cursor-not-allowed opacity-55 saturate-50")}
+        aria-disabled={locked}
       />
       {l.status === "impressa" && importedToday(l, today) && (
         <label
@@ -163,7 +196,8 @@ function Faturamento() {
         </button>
       )}
     </div>
-  );
+    );
+  };
 
   const exportDay = () =>
     downloadCSV(`cargas_${today}.csv`, todays.map((l) => ({
@@ -254,25 +288,189 @@ function Faturamento() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="max-h-[85vh] w-full max-w-2xl overflow-auto rounded-xl bg-card p-4 shadow-xl">
               <h3 className="mb-2 font-display text-lg font-bold">E-mail de CT-e manual</h3>
-              <p className="mb-1 text-sm"><strong>Para:</strong> {batch.to.join("; ")}</p>
-              {batch.cc.length > 0 && <p className="mb-1 text-sm"><strong>Cópia:</strong> {batch.cc.join("; ")}</p>}
-              <p className="mb-3 text-sm"><strong>Assunto:</strong> {batch.subject}</p>
-              <pre className="mb-4 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border bg-muted p-3 text-sm">
-                {batch.body}
-              </pre>
+              <p className="mb-3 text-sm text-muted-foreground">
+                {selectedLoads.length} carga(s) · {batch.carrier || "sem transportadora"}
+              </p>
+
+              <div className="mb-3 grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">E-mail da transportadora</Label>
+                  <select
+                    value={cteFrom}
+                    onChange={(e) => setCteFrom(e.target.value)}
+                    className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                  >
+                    <option value="">
+                      {carrierEmails.length ? "Todos da transportadora" : "Nenhum cadastrado"}
+                    </option>
+                    {carrierEmails.map((c) => (
+                      <option key={c.email} value={c.email}>{c.email}</option>
+                    ))}
+                  </select>
+                </div>
+                <label className="flex items-center gap-2 self-end text-sm">
+                  <Checkbox checked={cteMdfe} onCheckedChange={(v) => setCteMdfe(v === true)} />
+                  O CT-e tem MDF-e?
+                </label>
+              </div>
+
+              <p className="mb-1 text-sm"><strong>Para:</strong> {(cteFrom ? [cteFrom] : batch.to).join("; ")}</p>
+              <p className="mb-4 text-sm text-muted-foreground">
+                Torre entra sempre no Para · pessoal fixo entra em Cópia
+              </p>
+
               <div className="flex justify-end gap-2">
-                <Button size="sm" variant="ghost" onClick={() => setBatch(null)}>
-                  Fechar
-                </Button>
-                <Button size="sm" onClick={confirmCte}>
-                  Copiar e-mail
-                </Button>
+                <Button variant="outline" onClick={() => setBatch(null)}>Cancelar</Button>
+                <Button onClick={openCteMail}>Abrir e-mail</Button>
               </div>
             </div>
           </div>
         )}
       </main>
-      <LoadModal load={open} onClose={() => setOpenId(null)} profile="faturamento" loads={range} />
+      <DtSwapDialog
+        swap={dtSwap}
+        contacts={contacts}
+        onClose={() => setDtSwap(null)}
+      />
+      <LoadModal
+        load={open}
+        onClose={() => setOpenId(null)}
+        profile="faturamento"
+        loads={range}
+        onDtChanged={(info) => setDtSwap(info)}
+      />
+    </div>
+  );
+}
+
+/**
+ * Troca de DT formalizada por e-mail.
+ * O DT novo NÃO está gravado ainda: só é efetivado ao confirmar aqui.
+ * Cancelar mantém o DT antigo.
+ */
+function DtSwapDialog({
+  swap,
+  contacts,
+  onClose,
+}: {
+  swap: {
+    oldDt: string;
+    newDt: string;
+    plate: string | null;
+    carrier: string | null;
+    load: CargoLoad;
+  } | null;
+  contacts: Parameters<typeof cteRecipients>[0];
+  onClose: () => void;
+}) {
+  const update = useUpdateLoad();
+  const [mdfe, setMdfe] = useState(false);
+  const [motivo, setMotivo] = useState("faturamento inverter SKU");
+  const [nfs, setNfs] = useState("");
+  const [busy, setBusy] = useState(false);
+  /** E-mail da transportadora escolhido pelo usuário neste modal. */
+  const [fromEmail, setFromEmail] = useState("");
+
+  const carrierContacts = useMemo(
+    () => contacts.filter((c) => c.kind === "carrier" && carrierMatches(c.carrier, swap?.carrier)),
+    [contacts, swap?.carrier],
+  );
+
+  // Torre entra sempre no Para; o pessoal fixo entra em Cópia.
+  const auto = useMemo(() => cteRecipients(contacts, swap?.carrier ?? ""), [contacts, swap?.carrier]);
+  const to = useMemo(() => {
+    const chosen = fromEmail ? [fromEmail] : carrierContacts.map((c) => c.email);
+    return [...chosen, ...auto.to.filter((e) => !chosen.includes(e))];
+  }, [fromEmail, carrierContacts, auto.to]);
+
+  if (!swap) return null;
+
+  const { subject, body } = buildDtSwapEmail({
+    oldDt: swap.oldDt,
+    newDt: swap.newDt,
+    plate: swap.plate,
+    carrier: swap.carrier,
+    mdfe,
+    motivo,
+    nfs,
+    to,
+  });
+
+  /** Abre o Outlook já montado — sem botão de copiar. */
+  const openMail = async () => {
+    setBusy(true);
+    try {
+      // Efetiva a troca de DT só agora, porque o usuário confirmou.
+      await update(
+        swap.load,
+        { dt: swap.newDt, dt_original: swap.oldDt } as Partial<CargoLoad>,
+        "Troca de DT",
+        "faturamento",
+        `${swap.oldDt || "—"} → ${swap.newDt}`,
+      );
+      toast.success("DT alterado");
+      window.location.href = mailtoHref(to, auto.cc, subject, body);
+      onClose();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-xl bg-card p-4 shadow-xl">
+        <h3 className="mb-1 font-display text-lg font-bold">Troca de DT</h3>
+        <p className="mb-3 text-sm text-muted-foreground">
+          Transporte antigo <strong>{swap.oldDt}</strong> → novo <strong>{swap.newDt}</strong>
+          {swap.plate ? ` · ${swap.plate}` : ""}
+        </p>
+
+        <div className="mb-3 grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label className="text-xs">E-mail da transportadora</Label>
+            <select
+              value={fromEmail}
+              onChange={(e) => setFromEmail(e.target.value)}
+              className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+            >
+              <option value="">
+                {carrierContacts.length ? "Todos da transportadora" : "Nenhum cadastrado"}
+              </option>
+              {carrierContacts.map((c) => (
+                <option key={c.email} value={c.email}>{c.email}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Notas fiscais (4ª linha)</Label>
+            <Input value={nfs} onChange={(e) => setNfs(e.target.value)} placeholder="117254 e 117255-2" className="h-9" />
+          </div>
+          <div className="space-y-1 sm:col-span-2">
+            <Label className="text-xs">Motivo (3ª linha)</Label>
+            <Input value={motivo} onChange={(e) => setMotivo(e.target.value)} className="h-9" />
+          </div>
+          <label className="flex items-center gap-2 text-sm sm:col-span-2">
+            <Checkbox checked={mdfe} onCheckedChange={(v) => setMdfe(v === true)} />
+            O CT-e desta carga tem MDF-e? (inclui a linha do MDF-e no e-mail)
+          </label>
+        </div>
+
+        <p className="mb-1 text-sm"><strong>Para:</strong> {to.join("; ") || "—"}</p>
+        {auto.cc.length > 0 && <p className="mb-1 text-sm"><strong>Cópia:</strong> {auto.cc.join("; ")}</p>}
+        <p className="mb-3 text-sm"><strong>Assunto:</strong> {subject}</p>
+        <pre className="mb-4 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border bg-muted p-3 text-sm">
+          {body}
+        </pre>
+
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
+          <Button onClick={openMail} disabled={busy}>
+            {busy ? "Abrindo…" : "Abrir e-mail"}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
