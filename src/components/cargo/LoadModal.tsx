@@ -36,11 +36,23 @@ export function LoadModal({
   onClose,
   profile,
   loads = [],
+  onDtChanged,
 }: {
   load: CargoLoad | null;
   onClose: () => void;
   profile: Profile;
   loads?: CargoLoad[];
+  /**
+   * Chamado quando o usuário salva um DT novo: a tela abre o modal de troca
+   * de DT e SÓ efetiva no banco se o modal for confirmado.
+   */
+  onDtChanged?: (info: {
+    oldDt: string;
+    newDt: string;
+    plate: string | null;
+    carrier: string | null;
+    load: CargoLoad;
+  }) => void;
 }) {
   const [logOpen, setLogOpen] = useState(false);
   const [cteOpen, setCteOpen] = useState(false);
@@ -106,7 +118,7 @@ export function LoadModal({
                 </Field>
                 {fat && (
                   <Field label="DT">
-                    <Correctable load={load} field="dt" editable={fat} />
+                    <Correctable load={load} field="dt" editable={fat} onChanged={onDtChanged} />
                   </Field>
                 )}
                 <Field label="Cód. cliente">
@@ -272,10 +284,18 @@ function Correctable({
   load,
   field,
   editable,
+  onChanged,
 }: {
   load: CargoLoad;
   field: "plate" | "dt";
   editable: boolean;
+  onChanged?: (info: {
+    oldDt: string;
+    newDt: string;
+    plate: string | null;
+    carrier: string | null;
+    load: CargoLoad;
+  }) => void;
 }) {
   const update = useUpdateLoad();
   const [editing, setEditing] = useState(false);
@@ -288,6 +308,20 @@ function Correctable({
     const next = field === "plate" ? normalizePlate(value) : value.replace(/\D/g, "");
     setEditing(false);
     if (!next || next === load[field]) return;
+
+    // Troca de DT: NÃO grava aqui. Abre o modal de formalização e só efetiva
+    // se o usuário confirmar lá dentro (cancelar mantém o DT antigo).
+    if (field === "dt") {
+      onChanged?.({
+        oldDt: String(load.dt ?? ""),
+        newDt: next,
+        plate: load.plate ?? null,
+        carrier: load.carrier ?? null,
+        load,
+      });
+      return;
+    }
+
     update(
       load,
       { [field]: next, [origKey]: original ?? load[field] } as Partial<CargoLoad>,
