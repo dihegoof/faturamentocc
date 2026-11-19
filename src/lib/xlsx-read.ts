@@ -161,8 +161,19 @@ export async function readAgendaSheet(buf: ArrayBuffer): Promise<unknown[][]> {
         value = Number.isFinite(n) ? n : decodeXml(raw);
       }
 
+      // Número de série de data do Excel (ex.: 46344) -> Date.
+      // A faixa cobre 2000..2099, que é o período do negócio.
+      if (typeof value === "number" && value > 36526 && value < 73415 && /^B\d+$/.test(ref ?? "")) {
+        value = excelDate(value);
+      }
+
       const col = ref ? cellRef(ref).c : row.length;
       row[col] = value;
+    }
+    // Densifica: buracos viram null, para nenhuma célula chegar undefined.
+    const width = row.length;
+    for (let i = 0; i < width; i++) {
+      if (row[i] === undefined) row[i] = null;
     }
     rows.push(row);
   }
