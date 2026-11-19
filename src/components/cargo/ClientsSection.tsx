@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,8 @@ export function ClientsSection() {
     queryFn: fetchClients,
   });
   const [q, setQ] = useState("");
+  /** A lista fica recolhida até clicar em "Ver todos os clientes". */
+  const [showAll, setShowAll] = useState(false);
   const [editing, setEditing] = useState<Client | "new" | null>(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ["clients"] });
 
@@ -56,12 +58,23 @@ export function ClientsSection() {
           placeholder="Buscar por centro, nome, CNPJ, código ou itinerário"
           className="max-w-sm bg-card"
         />
-        <span className="text-xs text-muted-foreground">{filtered.length} cliente(s)</span>
-        <Button size="sm" className="ml-auto" onClick={() => setEditing("new")}>
-          <Plus className="mr-1 size-4" /> Novo cliente
-        </Button>
+        <span className="text-xs text-muted-foreground">{clients.length} cliente(s)</span>
+        <div className="ml-auto flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setShowAll((v) => !v)}>
+            {showAll ? <EyeOff className="mr-1 size-4" /> : <Eye className="mr-1 size-4" />}
+            {showAll ? "Ocultar clientes" : "Ver todos os clientes"}
+          </Button>
+          <Button size="sm" onClick={() => { setShowAll(true); setEditing("new"); }}>
+            <Plus className="mr-1 size-4" /> Novo cliente
+          </Button>
+        </div>
       </div>
 
+      {!showAll ? (
+        <p className="rounded-md border border-dashed bg-card px-3 py-6 text-center text-sm text-muted-foreground">
+          A lista de clientes está recolhida.
+        </p>
+      ) : (
       <div className="overflow-x-auto rounded-md border bg-card">
         <table className="w-full text-sm">
           <thead className="bg-muted text-left text-xs text-muted-foreground">
@@ -116,6 +129,7 @@ export function ClientsSection() {
           </tbody>
         </table>
       </div>
+      )}
 
       {editing && (
         <ClientDialog
