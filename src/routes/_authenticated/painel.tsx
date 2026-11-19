@@ -6,6 +6,8 @@ import { ClientsSection } from "@/components/cargo/ClientsSection";
 import { ContactsSection } from "@/components/cargo/ContactsSection";
 import { UsersSection } from "@/components/cargo/UsersSection";
 import { ArchiveSection } from "@/components/cargo/ArchiveSection";
+import { AgendaSection } from "@/components/cargo/AgendaSection";
+import { AgendaSyncToggle } from "@/components/cargo/AgendaSyncToggle";
 import { DeletedLoadsSection } from "@/components/cargo/DeletedLoadsSection";
 import { getCurrentUser } from "@/lib/auth";
 
@@ -35,6 +37,8 @@ function Painel() {
     <main className="mx-auto max-w-6xl space-y-5 p-4 md:p-6">
       <h1 className="font-display text-3xl font-bold">Painel</h1>
 
+      {isAdmin && <AgendaSyncToggle me={me?.display_name ?? me?.email ?? undefined} />}
+      {isAdmin && <AgendaSection uploadedBy={me?.display_name ?? me?.email ?? undefined} />}
       {isAdmin && <DeletedLoadsSection />}
       {isAdmin && <ArchiveSection />}
 
