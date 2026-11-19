@@ -26,10 +26,16 @@ export function AgendaImportDialog({
   const fileRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState("");
   const [loads, setLoads] = useState<ParsedAgenda[] | null>(null);
+  /** Progresso da importação: {feito, total}. */
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   const send = useMutation({
     mutationFn: (p: { loads: ParsedAgenda[]; fileName: string }) =>
-      importAgenda(p.loads, { fileName: p.fileName, uploadedBy }),
+      importAgenda(p.loads, {
+        fileName: p.fileName,
+        uploadedBy,
+        onProgress: (done, total) => setProgress({ done, total }),
+      }),
     onSuccess: (r) => {
       toast.success(`${r.created} carga(s) criada(s) · ${r.matched} já existia(m)`);
       if (r.warnings.length) toast.warning(`${r.warnings.length} aviso(s) na agenda`);
@@ -44,6 +50,7 @@ export function AgendaImportDialog({
     onOpenChange(false);
     setFileName("");
     setLoads(null);
+    setProgress(null);
   }
 
   async function onFile(f: File) {
@@ -105,7 +112,7 @@ export function AgendaImportDialog({
               }}
             />
           </>
-        ) : (
+        ) : progress ? null : (
           <>
             <div className="flex items-center gap-2 text-sm">
               <FileSpreadsheet className="h-4 w-4" />
@@ -131,38 +138,51 @@ export function AgendaImportDialog({
                   <th className="p-2">DT</th>
                   <th className="p-2">Destino</th>
                   <th className="p-2">Pallets</th>
-                  <th className="p-2">Produtos</th>
-                  <th className="p-2">Avisos</th>
                 </tr>
               </thead>
               <tbody>
                 {loads.map((l) => (
                   <tr key={l.load_number} className="border-t">
-                    <td className="p-2">{l.load_date}</td>
+                    <td className="p-2">{l.load_date.split("-").reverse().join("/")}</td>
                     <td className="p-2">{l.load_number}</td>
                     <td className="p-2 font-mono">
                       {l.dt || <span className="text-destructive">faltando</span>}
                     </td>
                     <td className="p-2">{l.destination || "—"}</td>
                     <td className="p-2">{l.pallets}</td>
-                    <td className="p-2">{l.products.length}</td>
-                    <td className="p-2 text-xs text-muted-foreground">
-                      {l.warnings.join("; ") || "—"}
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
 
-            <DialogFooter>
-              <Button variant="outline" onClick={close}>Cancelar</Button>
-              <Button
-                disabled={send.isPending || !comDt.length}
-                onClick={() => send.mutate({ loads: comDt, fileName })}
-              >
-                {send.isPending ? "Importando…" : `Importar ${comDt.length} carga(s)`}
-              </Button>
-            </DialogFooter>
+            {progress ? (
+              <div className="space-y-2 pt-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span>Importando cargas…</span>
+                  <span className="text-muted-foreground">
+                    {progress.done} / {progress.total}
+                  </span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{
+                      width: `${Math.round((progress.done / Math.max(1, progress.total)) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <DialogFooter>
+                <Button variant="outline" onClick={close}>Cancelar</Button>
+                <Button
+                  disabled={send.isPending || !comDt.length}
+                  onClick={() => send.mutate({ loads: comDt, fileName })}
+                >
+                  Importar {comDt.length} carga(s)
+                </Button>
+              </DialogFooter>
+            )}
           </>
         )}
       </DialogContent>
