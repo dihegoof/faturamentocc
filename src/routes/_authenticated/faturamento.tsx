@@ -16,6 +16,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { fetchClients, fetchContacts } from "@/lib/cargo-api";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -419,9 +420,11 @@ function DtSwapDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-xl border bg-card p-4 shadow-2xl">
-        <h3 className="mb-1 font-display text-lg font-bold">Troca de DT</h3>
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="font-display text-2xl">Troca de DT</DialogTitle>
+        </DialogHeader>
         <p className="mb-3 text-sm text-muted-foreground">
           Transporte antigo <strong>{swap.oldDt}</strong> → novo <strong>{swap.newDt}</strong>
           {swap.plate ? ` · ${swap.plate}` : ""}
@@ -484,7 +487,7 @@ function DtSwapDialog({
             </Button>
           </div>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
