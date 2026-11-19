@@ -529,7 +529,7 @@ function DeleteDialog({
     setBusy(true);
     try {
       await softDeleteLoad(load.id, "faturamento", reason.trim() || undefined);
-      toast.success(`Carga ${load.load_number} excluída — o admin pode restaurar`);
+      toast.success(`Carga ${load.load_number} excluída`);
       onDone();
     } catch (e) {
       toast.error((e as Error).message);
@@ -545,8 +545,7 @@ function DeleteDialog({
           <DialogTitle className="font-display text-2xl">Excluir carga {load?.load_number}</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          A carga sai do painel para toda a operação, mas <strong>não é apagada</strong> — fica
-          guardada e só o administrador pode restaurá-la, no Painel.
+          A carga será <strong>excluída</strong> do painel. Esta ação não pode ser desfeita.
         </p>
         <div className="space-y-1">
           <Label htmlFor="del-reason" className="text-xs">Motivo (opcional)</Label>
