@@ -685,7 +685,7 @@ export function buildDtSwapEmail(
   greeting = new Date().getHours() < 12 ? "Bom dia" : "Boa tarde",
 ): { subject: string; body: string } {
   const carrier = (swap.carrier ?? "").trim();
-  const subject = `Troca de DT: ${swap.newDt} | ${carrier.toUpperCase()}`;
+  const subject = `Troca de DT: ${swap.oldDt} > ${swap.newDt} | ${carrier.toUpperCase()}`;
   const motivo = (swap.motivo ?? "").trim() || "faturamento inverter SKU";
   // A 2ª linha cita só o e-mail selecionado — sem mailto:, que o Outlook
   // já transforma em link e ficava aparecendo duplicado.
