@@ -687,10 +687,9 @@ export function buildDtSwapEmail(
   const carrier = (swap.carrier ?? "").trim();
   const subject = `Troca de DT: ${swap.newDt} | ${carrier.toUpperCase()}`;
   const motivo = (swap.motivo ?? "").trim() || "faturamento inverter SKU";
-  // A 2ª linha cita só o e-mail que o usuário selecionou no modal.
-  const carrierMention = swap.mention?.trim()
-    ? `<mailto:${swap.mention.trim()}|${swap.mention.trim()}>`
-    : `<${carrier}>`;
+  // A 2ª linha cita só o e-mail selecionado — sem mailto:, que o Outlook
+  // já transforma em link e ficava aparecendo duplicado.
+  const carrierMention = `<${swap.mention?.trim() || carrier}>`;
 
   // Torre sempre; a transportadora só quando há MDF-e a cancelar.
   const apoio = swap.mdfe
