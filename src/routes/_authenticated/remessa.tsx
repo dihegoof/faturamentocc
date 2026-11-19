@@ -11,7 +11,7 @@ import { ImportTextDialog } from "@/components/cargo/ImportTextDialog";
 import { ImportMBDialog } from "@/components/cargo/ImportMBDialog";
 import { Button } from "@/components/ui/button";
 import { useLoadsRange, useNow } from "@/hooks/use-loads";
-import { importedToday, matchesSearch, todayISO, type CargoLoad } from "@/lib/cargo";
+import { isAgendaLocked, isFutureLoad, lockReason, matchesSearch, todayISO, type CargoLoad } from "@/lib/cargo";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/remessa")({
@@ -41,7 +41,6 @@ function Remessa() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [importText, setImportText] = useState(false);
   const [mb, setMb] = useState(false);
-
   const perDay = useMemo(() => {
     const m = new Map<string, number>();
     range.forEach((l) => m.set(l.load_date, (m.get(l.load_date) ?? 0) + 1));
@@ -53,12 +52,28 @@ function Remessa() {
     return [...[...days].reverse(), ...future];
   }, [perDay, days]);
   const searching = !!q.trim();
-  const todays = range.filter((l) => importedToday(l, today));
+  /** Cargas de hoje: pela data prevista, não pela data de importação. */
+  const todays = range.filter((l) => l.load_date === today);
+  /** Previstas para depois de hoje: aparecem, mas bloqueadas. */
+  const upcoming = range.filter((l) => isFutureLoad(l, today));
   const results = range.filter((l) => matchesSearch(l, q));
   const dayLoads = range.filter((l) => l.load_date === date);
-  const tile = (l: CargoLoad) => (
-    <LoadTile load={l} profile="remessa" now={now} colored={importedToday(l, today)} onOpen={() => setOpenId(l.id)} />
-  );
+  const tile = (l: CargoLoad) => {
+    /** Carga de outro dia, ou ainda esperando confirmação: não abre. */
+    const locked = isFutureLoad(l, today) || isAgendaLocked(l);
+    return (
+      <LoadTile
+        load={l}
+        profile="remessa"
+        now={now}
+        colored={l.load_date === today}
+        onOpen={() => { if (!locked) setOpenId(l.id); }}
+        className={cn(locked && "cursor-not-allowed opacity-55 saturate-50")}
+        aria-disabled={locked}
+        title={lockReason(l, today) ?? undefined}
+      />
+    );
+  };
   const open = range.find((l) => l.id === openId) ?? null;
 
   return (
@@ -85,6 +100,17 @@ function Remessa() {
             ) : (
               <p className="py-6 text-center text-muted-foreground">Nenhuma carga encontrada nos últimos 30 dias.</p>
             )}
+          </section>
+        )}
+        {!searching && upcoming.length > 0 && (
+          <section>
+            <h2 className="mb-1 font-display text-lg font-bold uppercase">Próximos dias ({upcoming.length})</h2>
+            <p className="mb-2 text-sm text-muted-foreground">
+              Cargas previstas para depois de hoje — bloqueadas até o dia delas.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {upcoming.map((l) => <div key={l.id}>{tile(l)}</div>)}
+            </div>
           </section>
         )}
         {!searching && (
