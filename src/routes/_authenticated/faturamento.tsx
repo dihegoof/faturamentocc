@@ -390,11 +390,11 @@ function DtSwapDialog({
     mention: fromEmail || carrierContacts[0]?.email || "",
   });
 
-  /** Abre o Outlook já montado — sem botão de copiar. */
+  /** Confirma a troca e abre o Outlook montado. A confirmação é explícita:
+   *  cancelar o e-mail depois não desfaz, mas fechar ESTE modal não troca nada. */
   const openMail = async () => {
     setBusy(true);
     try {
-      // Efetiva a troca de DT só agora, porque o usuário confirmou.
       await update(
         swap.load,
         { dt: swap.newDt, dt_original: swap.oldDt } as Partial<CargoLoad>,
@@ -402,7 +402,7 @@ function DtSwapDialog({
         "faturamento",
         `${swap.oldDt || "—"} → ${swap.newDt}`,
       );
-      toast.success("DT alterado");
+      toast.success(`DT alterado: ${swap.oldDt || "—"} → ${swap.newDt}`);
       window.location.href = mailtoHref(to, auto.cc, subject, body);
       onClose();
     } catch (e) {
@@ -458,10 +458,13 @@ function DtSwapDialog({
           {body}
         </pre>
 
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className="mr-auto text-sm">
+            Trocar o DT para <strong>{swap.newDt}</strong> e abrir o e-mail?
+          </span>
           <Button variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
           <Button onClick={openMail} disabled={busy}>
-            {busy ? "Abrindo…" : "Abrir e-mail"}
+            {busy ? "Abrindo…" : `Trocar DT e abrir e-mail`}
           </Button>
         </div>
       </div>
