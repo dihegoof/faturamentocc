@@ -465,9 +465,7 @@ export function buildCteEmail(
   options: { mdfe?: boolean; carrier?: string | null; to?: string[] } = {},
   greeting = new Date().getHours() < 12 ? "Bom dia" : "Boa tarde",
 ) {
-  const carrier = (options.carrier ?? loads[0]?.carrier ?? "—").trim();
   const plates = loads.map((l) => normalizePlate(l.plate ?? "") || "—");
-  const subject = `Emissão CTe manual - ${carrier.toUpperCase()}  ${plates.join(", ")}`;
 
   // 1 carga: "DT:" / "Placa:"; 2+ cargas: "DT 1:" / "Placa 1:", "DT 2:" ...
   const many = loads.length > 1;
@@ -478,25 +476,16 @@ export function buildCteEmail(
     })
     .join("\n\n");
 
-  // 1ª linha: e-mail da transportadora (escolhido no modal).
-  const first = options.to?.length
-    ? options.to.map((e) => `<mailto:${e}|${e}>`).join(", ")
-    : `<${carrier}>`;
-
   const body = [
-    `${greeting} a todos!`,
+    `${greeting},`,
     "",
-    `${first}, por gentileza nos apoiar com a emissão do CT-e manual do transporte citado abaixo.`,
-    "",
-    // 2ª linha só entra quando o checkbox de MDF-e está marcado.
-    ...(options.mdfe ? ["Este transporte possui MDF-e, favor considerar.", ""] : []),
-    `<Torremgt1>, por gentileza nos apoiar com a solicitação abaixo!`,
-    "",
-    `<Abastecimento PR>, favor considerar para emissão!`,
+    "Por gentileza nos apoiar com o desacordo para o transporte abaixo para que seja possível a emissão do CT-e manual!",
     "",
     data,
+    "",
+    "[Evidência do Triangulus]",
   ].join("\n");
-  return { subject, body };
+  return { subject: `Emissão CTe manual - ${plates.join(", ")}`, body };
 }
 
 /** Atalho para enviar o CT-e manual: abre o Outlook já com Para/Cópia/Assunto/Corpo. */
@@ -678,8 +667,8 @@ export function summarizePallets(rows: Pick<PlatePalletRow, "pallets">[]) {
 }
 
 /**
- * Troca de DT: o DT do manifesto precisa mudar (ex.: faturamento inverteu SKU).
- * Texto padrão do e-mail de solicitação, com o transporte antigo e o novo.
+ * Troca de DT. A menção da transportadora só entra quando o MDF-e está
+ * marcado; a da TORRET1 entra sempre; o abastecimento é fixo.
  */
 export function buildDtSwapEmail(
   swap: {
@@ -696,22 +685,30 @@ export function buildDtSwapEmail(
 ): { subject: string; body: string } {
   const carrier = (swap.carrier ?? "").trim();
   const subject = `Troca de DT: ${swap.newDt} | ${carrier.toUpperCase()}`;
-  const first = swap.to?.length
+  const motivo = (swap.motivo ?? "").trim() || "faturamento inverter SKU";
+  const carrierMention = swap.to?.length
     ? swap.to.map((e) => `<mailto:${e}|${e}>`).join(", ")
     : `<${carrier}>`;
 
+  // Torre sempre; a transportadora só quando há MDF-e a cancelar.
+  const apoio = swap.mdfe
+    ? [
+        `${carrierMention}, por gentileza nos apoiar com o cancelamento do MDF-e!`,
+        "",
+        `<TORRET1>, por gentileza nos apoiar com o cancelamento do CT-e e troca de transporte devido ${motivo}.`,
+      ]
+    : [
+        `<TORRET1>, por gentileza nos apoiar com o cancelamento do CT-e e troca de transporte devido ${motivo}.`,
+      ];
+
   const body = [
-    `${greeting} a todos!`,
+    `${greeting}!`,
     "",
-    `${first}, por gentileza nos apoiar com o cancelamento do manifesto do transporte citado abaixo.`,
+    ...apoio,
     "",
-    ...(swap.mdfe ? ["Este transporte possui MDF-e, favor considerar.", ""] : []),
-    `<Torremgt1>, por gentileza nos apoiar com troca de transporte abaixo, será alterado devido ${swap.motivo?.trim() || "faturamento inverter SKU"}!`,
-    "",
-    `<Abastecimento PR>, desconsiderar as notas fiscais ${swap.nfs?.trim() || "citadas"}, essas serão canceladas!`,
+    `<abastecimento.pr@kof.com>, favor desconsiderar as notas fiscais ${(swap.nfs ?? "").trim() || "citadas"}, essas serão canceladas.`,
     "",
     `Transporte antigo: ${swap.oldDt}`,
-    "",
     `Transporte novo: ${swap.newDt}`,
   ].join("\n");
   return { subject, body };
