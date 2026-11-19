@@ -87,20 +87,18 @@ function Faturamento() {
   const todays = useMemo(() => range.filter((l) => importedToday(l, today)), [range, today]);
   /** Cargas de dias anteriores que nunca foram finalizadas: pendência de checagem. */
   const pendings = useMemo(() => range.filter((l) => isOverdue(l, today)), [range, today]);
-  /** E-mails cadastrados da transportadora das cargas marcadas. */
-  const carrierEmails = useMemo(
-    () =>
-      contacts.filter(
-        (c) => c.kind === "carrier" && carrierMatches(c.carrier, selectedLoads[0] ? carrierOf(selectedLoads[0]) : ""),
-      ),
-    [contacts, selectedLoads],
-  );
   const selectedLoads = useMemo(
     () => selected.map((id) => range.find((l) => l.id === id)).filter(Boolean) as CargoLoad[],
     [selected, range],
   );
   const carrierOf = (l: CargoLoad) =>
     l.carrier ?? clients.find((c) => c.center_code === (l.destination_code ?? "").toUpperCase())?.name ?? "";
+  /** E-mails cadastrados da transportadora das cargas marcadas.
+   *  Declarado DEPOIS de selectedLoads e carrierOf de propósito: usa os dois. */
+  const carrierEmails = useMemo(
+    () => contacts.filter((c) => c.kind === "carrier" && carrierMatches(c.carrier, carrierOf(selectedLoads[0] ?? ({} as CargoLoad)))),
+    [contacts, selectedLoads, clients],
+  );
   const results = useMemo(
     () => (q.trim() ? range.filter((l) => matchesSearch(l, q)) : todays),
     [range, q, todays],
