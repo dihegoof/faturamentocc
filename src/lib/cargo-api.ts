@@ -428,7 +428,13 @@ export async function fetchAgendaImports(limit = 30) {
  */
 export async function importAgenda(
   loads: ParsedAgenda[],
-  opts: { fileName?: string; uploadedBy?: string; loadDate?: string } = {},
+  opts: {
+    fileName?: string;
+    uploadedBy?: string;
+    loadDate?: string;
+    /** Avisa o avanço da importação (quantas já foram gravadas). */
+    onProgress?: (done: number, total: number) => void;
+  } = {},
 ) {
   const productsTotal = loads.reduce((n, l) => n + l.products.length, 0);
   let created = 0;
@@ -448,9 +454,15 @@ export async function importAgenda(
     .single();
   if (ie) throw ie;
 
+  const total = loads.length;
+  let done = 0;
+  opts.onProgress?.(0, total);
+
   for (const l of loads) {
     if (!l.dt) {
       warnings.push(`Carga ${l.load_number}: sem DT, não importada`);
+      done++;
+      opts.onProgress?.(done, total);
       continue;
     }
     const { data: existing } = await supabase
@@ -461,6 +473,8 @@ export async function importAgenda(
       .maybeSingle();
     if (existing) {
       matched++;
+      done++;
+      opts.onProgress?.(done, total);
       continue;
     }
 
@@ -481,7 +495,12 @@ export async function importAgenda(
       .select("id")
       .single();
     if (error) {
-      if (error.code === "23505") { matched++; continue; }
+      if (error.code === "23505") {
+        matched++;
+        done++;
+        opts.onProgress?.(done, total);
+        continue;
+      }
       throw error;
     }
     if (l.products.length) {
@@ -492,6 +511,8 @@ export async function importAgenda(
     }
     warnings.push(...l.warnings.map((w) => `Carga ${l.load_number}: ${w}`));
     created++;
+    done++;
+    opts.onProgress?.(done, total);
   }
 
   await supabase.from("agenda_imports").update({
