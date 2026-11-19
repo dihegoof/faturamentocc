@@ -36,8 +36,8 @@ export function DeletedLoadsSection() {
         <div>
           <h2 className="font-display text-xl font-bold">Cargas excluídas</h2>
           <p className="text-sm text-muted-foreground">
-            Exclusão superficial: a carga sai da operação, mas fica guardada e pode ser restaurada.
-            Nada é apagado do sistema antes de 6 meses.
+            Área restrita: as cargas excluídas continuam disponíveis aqui e podem voltar ao
+            painel a qualquer momento.
           </p>
         </div>
         <Button size="sm" variant="secondary" onClick={() => setOpen((v) => !v)}>
