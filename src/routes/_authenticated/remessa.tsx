@@ -55,8 +55,6 @@ function Remessa() {
     return [...[...days].reverse(), ...future];
   }, [perDay, days]);
   const searching = !!q.trim();
-  /** Lista do dia já com os filtros do funil aplicados. */
-  const dayList = applyFilters([...todays, ...waiting], filters);
   /** Cargas de hoje prontas para faturar: no topo da lista. */
   const todays = sortByReadiness(
     range.filter((l) => l.load_date === today && !isAgendaLocked(l)),
@@ -66,6 +64,9 @@ function Remessa() {
   const waiting = range.filter((l) => l.load_date === today && isAgendaLocked(l));
   /** Previstas para depois de hoje: aparecem, mas bloqueadas. */
   const upcoming = range.filter((l) => isFutureLoad(l, today));
+  /** Lista do dia já com os filtros do funil aplicados.
+   *  Declarada depois de todays e waiting de propósito: usa os dois. */
+  const dayList = applyFilters([...todays, ...waiting], filters);
   const results = range.filter((l) => matchesSearch(l, q));
   const dayLoads = range.filter((l) => l.load_date === date);
   const tile = (l: CargoLoad) => {
