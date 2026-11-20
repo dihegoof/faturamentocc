@@ -29,11 +29,14 @@ import {
   canSelectWith,
   downloadCSV,
   formatPlateLine,
+  countsTime,
   importedToday,
   isAgendaLocked,
+  isAwaitingRemessa,
   isFutureLoad,
   isOverdue,
   lockReason,
+  sortByReadiness,
   matchesSearch,
   minutesSince,
   statusLabel,
@@ -74,6 +77,8 @@ function Faturamento() {
   /** E-mail da transportadora escolhido no modal de CT-e. */
   const [cteFrom, setCteFrom] = useState("");
   const [agendaOpen, setAgendaOpen] = useState(false);
+  /** Marcado, some com as cargas previstas para depois de hoje. */
+  const [hideFuture, setHideFuture] = useState(false);
   /** O botão da agenda só existe quando o sistema está ligado no Painel. */
   const { data: agendaOn = false } = useQuery({ queryKey: ["agenda-sync"], queryFn: agendaSyncOn });
   /** Troca de DT formalizada por e-mail: DT antigo x novo. */
@@ -92,9 +97,17 @@ function Faturamento() {
   const { data: clients = [] } = useQuery({ queryKey: ["clients"], queryFn: fetchClients });
 
   /** Cargas de hoje: pela data prevista da carga, não pela data de importação. */
-  const todays = useMemo(() => range.filter((l) => l.load_date === today), [range, today]);
-  /** Cargas de agenda ainda bloqueadas (esperando a Remessa). */
-  const lockedAgenda = useMemo(() => range.filter((l) => isAgendaLocked(l)), [range]);
+  const todays = useMemo(
+    () => sortByReadiness(range.filter((l) => l.load_date === today && !isAgendaLocked(l)), today),
+    [range, today],
+  );
+  /** De hoje, mas a Remessa ainda não importou: vão para o fim da lista. */
+  const waitingToday = useMemo(
+    () => range.filter((l) => isAwaitingRemessa(l, today)),
+    [range, today],
+  );
+  /** Previstas para depois de hoje. */
+  const future = useMemo(() => range.filter((l) => isFutureLoad(l, today)), [range, today]);
   /** Cargas de dias anteriores que nunca foram finalizadas: pendência de checagem. */
   const pendings = useMemo(() => range.filter((l) => isOverdue(l, today)), [range, today]);
   const selectedLoads = useMemo(
@@ -110,9 +123,13 @@ function Faturamento() {
     () => contacts.filter((c) => c.kind === "carrier" && carrierMatches(c.carrier, carrierOf(selectedLoads[0] ?? ({} as CargoLoad)))),
     [contacts, selectedLoads, clients],
   );
+  const visibleToday = useMemo(
+    () => (hideFuture ? todays : [...todays, ...waitingToday, ...future]),
+    [todays, waitingToday, future, hideFuture],
+  );
   const results = useMemo(
-    () => (q.trim() ? range.filter((l) => matchesSearch(l, q)) : todays),
-    [range, q, todays],
+    () => (q.trim() ? range.filter((l) => matchesSearch(l, q)) : visibleToday),
+    [range, q, visibleToday],
   );
 
   const registerExit = (l: CargoLoad) => {
@@ -173,6 +190,7 @@ function Faturamento() {
         now={now}
         lockedBy={locks[l.id]}
         colored={importedToday(l, today)}
+        showTime={countsTime(l, today)}
         onOpen={() => { if (!locked) setOpenId(l.id); }}
         className={cn("min-w-0 flex-1", locked && "cursor-not-allowed opacity-55 saturate-50")}
         aria-disabled={locked}
@@ -252,8 +270,19 @@ function Faturamento() {
         {(q.trim() || todays.length > 0) && (
           <section>
             <h2 className="mb-2 font-display text-lg font-bold uppercase">
-              {q.trim() ? `Resultados (${results.length})` : `Cargas de hoje (${results.length})`}
+              {q.trim() ? `Resultados (${results.length})` : `Cargas de hoje (${visibleToday.length})`}
             </h2>
+            {!q.trim() && (
+              <label className="mb-2 flex w-fit cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-current"
+                  checked={hideFuture}
+                  onChange={(e) => setHideFuture(e.target.checked)}
+                />
+                Ocultar cargas futuras
+              </label>
+            )}
             {results.length ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                 {results.map((l) => <div key={l.id}>{tile(l)}</div>)}
