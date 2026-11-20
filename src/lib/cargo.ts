@@ -1065,3 +1065,31 @@ export function liquidationLabel(c: LiquidationCriteria): string {
   if (c.user) partes.push(`usuário ${c.user}`);
   return partes.length ? `por critério: ${partes.join(" · ")}` : "sem critério";
 }
+
+/**
+ * E-mail que a Remessa dispara ao formalizar a importação:
+ * um resumo simples e organizado das cargas que acabaram de entrar.
+ */
+export function buildImportEmail(
+  loads: Pick<CargoLoad, "load_number" | "dt" | "plate" | "carrier" | "destination" | "pallets">[],
+): { subject: string; body: string } {
+  const today = new Date().toLocaleDateString("pt-BR");
+  const subject = `Cargas importadas - ${today}`;
+  const linhas = loads.map((l) => {
+    const partes = [
+      `Carga ${l.load_number}`,
+      l.dt ? `DT ${l.dt}` : null,
+      l.plate ? normalizePlate(l.plate) : null,
+      l.carrier || null,
+      l.destination || null,
+      l.pallets ? `${l.pallets} plt` : null,
+    ].filter(Boolean);
+    return `- ${partes.join(" | ")}`;
+  });
+  const body = [
+    "Segue para faturamento:",
+    "",
+    ...(linhas.length ? linhas : ["- (nenhuma carga)"]),
+  ].join("\n");
+  return { subject, body };
+}
