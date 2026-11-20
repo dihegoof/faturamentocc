@@ -66,7 +66,9 @@ function Remessa() {
   const upcoming = range.filter((l) => isFutureLoad(l, today));
   /** Lista do dia já com os filtros do funil aplicados.
    *  Declarada depois de todays e waiting de propósito: usa os dois. */
-  const dayList = applyFilters([...todays, ...waiting], filters);
+  const dayList = applyFilters([...todays, ...waiting], filters, today);
+  /** As futuras também respeitam o funil. */
+  const upcomingVisible = applyFilters(upcoming, filters, today);
   const results = range.filter((l) => matchesSearch(l, q));
   const dayLoads = range.filter((l) => l.load_date === date);
   const tile = (l: CargoLoad) => {
@@ -117,14 +119,14 @@ function Remessa() {
             )}
           </section>
         )}
-        {!searching && upcoming.length > 0 && !filters.hideFuture && (
+        {!searching && upcomingVisible.length > 0 && (
           <section>
-            <h2 className="mb-1 font-display text-lg font-bold uppercase">Próximos dias ({upcoming.length})</h2>
+            <h2 className="mb-1 font-display text-lg font-bold uppercase">Próximos dias ({upcomingVisible.length})</h2>
             <p className="mb-2 text-sm text-muted-foreground">
               Cargas previstas para depois de hoje — bloqueadas até o dia delas.
             </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-              {upcoming.map((l) => <div key={l.id}>{tile(l)}</div>)}
+              {upcomingVisible.map((l) => <div key={l.id}>{tile(l)}</div>)}
             </div>
           </section>
         )}
