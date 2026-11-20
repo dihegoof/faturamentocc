@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { PlateHistory } from "@/components/cargo/PlateHistory";
 import { AgendaImportDialog } from "@/components/cargo/AgendaImportDialog";
 import { ListFilter } from "@/components/cargo/ListFilter";
+import { LiquidationDialog } from "@/components/cargo/LiquidationDialog";
+import { LiquidationPending } from "@/components/cargo/LiquidationPending";
 import { useLoadLocks, useLoadsRange, useNow, useUpdateLoad } from "@/hooks/use-loads";
 import { getCurrentUser } from "@/lib/auth";
 import { agendaSyncOn, fetchClients, fetchContacts } from "@/lib/cargo-api";
@@ -81,6 +83,8 @@ function Faturamento() {
   /** E-mail da transportadora escolhido no modal de CT-e. */
   const [cteFrom, setCteFrom] = useState("");
   const [agendaOpen, setAgendaOpen] = useState(false);
+  const [liqOpen, setLiqOpen] = useState(false);
+  const meName = me?.display_name ?? me?.email ?? "Faturamento";
   /** Filtros do funil. */
   const [filters, setFilters] = useState<ListFilters>(NO_FILTERS);
   /** O botão da agenda só existe quando o sistema está ligado no Painel. */
@@ -257,7 +261,7 @@ function Faturamento() {
   return (
     <div className="min-h-screen">
       <AppHeader profile="faturamento">
-        <Button size="sm" variant="secondary" onClick={exportLiquidacao}>
+        <Button size="sm" variant="secondary" onClick={() => setLiqOpen(true)}>
           <Download className="h-4 w-4" /> Liquidação
         </Button>
         {agendaOn && (
@@ -268,6 +272,7 @@ function Faturamento() {
       </AppHeader>
       <main className="mx-auto max-w-[1500px] space-y-6 p-4 md:p-6">
         <SearchBox value={q} onChange={setQ} />
+        <LiquidationPending user={meName} />
         {(q.trim() || todays.length > 0) && (
           <section>
             <div className="mb-2 flex items-center gap-2">
@@ -359,6 +364,13 @@ function Faturamento() {
           </div>
         )}
       </main>
+      <LiquidationDialog
+        open={liqOpen}
+        onOpenChange={setLiqOpen}
+        loads={range}
+        user={meName}
+        initialDate={today}
+      />
       <AgendaImportDialog
         open={agendaOpen}
         onOpenChange={setAgendaOpen}
