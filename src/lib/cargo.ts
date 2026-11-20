@@ -897,19 +897,50 @@ export function diffAgendaProducts(
 /* ------------------------------------------------------------------ */
 
 /**
- * Carga de agenda que ainda não foi confirmada pela Remessa.
- * Fica bloqueada: não some do histórico, mas não pode ser alterada.
+ * A Remessa já importou esta carga?
+ * "Aguardando Remessa" é a carga que o Faturamento subiu e a Remessa
+ * ainda não confirmou — é ela que não anda e não conta tempo.
  */
-export function isAgendaLocked(
-  l: Pick<CargoLoad, "status">,
-): boolean {
+export function isAgendaLocked(l: Pick<CargoLoad, "status">): boolean {
   return l.status === "pendente_remessa";
 }
 
 /**
- * Carga prevista para depois de hoje: aparece só no histórico e
- * não pode ser faturada ainda.
+ * Pronta para faturar: foi importada pela Remessa (ou veio de fora da
+ * agenda) E o dia da carga já chegou.
  */
+export function isReadyToInvoice(
+  l: Pick<CargoLoad, "status" | "load_date">,
+  today = todayISO(),
+): boolean {
+  return !isAgendaLocked(l) && l.load_date <= today;
+}
+
+/**
+ * O tempo de espera só corre a partir do momento em que a Remessa
+ * importou a carga, e só depois que o dia da carga chegou.
+ * Antes disso o card não mostra tempo nenhum.
+ */
+export function countsTime(
+  l: Pick<CargoLoad, "status" | "load_date">,
+  today = todayISO(),
+): boolean {
+  if (isAgendaLocked(l)) return false;          // Remessa ainda não importou
+  return l.load_date <= today;                   // solta o tempo no dia da carga
+}
+
+/**
+ * Pendência da lista: carga de HOJE que a Remessa ainda não importou.
+ * É ela que desce para o fim da lista, abaixo das prontas.
+ */
+export function isAwaitingRemessa(
+  l: Pick<CargoLoad, "status" | "load_date">,
+  today = todayISO(),
+): boolean {
+  return isAgendaLocked(l) && l.load_date <= today;
+}
+
+/** Carga de dia posterior a hoje (bloqueada até chegar o dia). */
 export function isFutureLoad(
   l: Pick<CargoLoad, "load_date">,
   today = todayISO(),
@@ -922,7 +953,20 @@ export function lockReason(
   l: Pick<CargoLoad, "status" | "load_date">,
   today = todayISO(),
 ): string | null {
-  if (isAgendaLocked(l)) return "Carga ainda não confirmada pela Remessa.";
+  if (isAgendaLocked(l)) return "Carga ainda não importada pela Remessa.";
   if (isFutureLoad(l, today)) return "Carga prevista para outro dia — não está pronta para faturar.";
   return null;
+}
+
+/** Ordena a lista: prontas para faturar no topo, pendentes da Remessa embaixo. */
+export function sortByReadiness<T extends Pick<CargoLoad, "status" | "load_date">>(
+  loads: T[],
+  today = todayISO(),
+): T[] {
+  return [...loads].sort((a, b) => {
+    const pa = isReadyToInvoice(a, today) ? 0 : 1;
+    const pb = isReadyToInvoice(b, today) ? 0 : 1;
+    if (pa !== pb) return pa - pb;
+    return (a.load_number ?? "").localeCompare(b.load_number ?? "", "pt-BR", { numeric: true });
+  });
 }
