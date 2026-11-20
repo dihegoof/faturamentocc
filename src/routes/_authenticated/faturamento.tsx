@@ -131,10 +131,10 @@ function Faturamento() {
     () => contacts.filter((c) => c.kind === "carrier" && carrierMatches(c.carrier, carrierOf(selectedLoads[0] ?? ({} as CargoLoad)))),
     [contacts, selectedLoads, clients],
   );
-  const visibleToday = useMemo(() => {
-    const base = filters.hideFuture ? todays : [...todays, ...waitingToday, ...future];
-    return applyFilters(base, filters);
-  }, [todays, waitingToday, future, filters]);
+  const visibleToday = useMemo(
+    () => applyFilters([...todays, ...waitingToday, ...future], filters, today),
+    [todays, waitingToday, future, filters, today],
+  );
   const results = useMemo(
     () => (q.trim() ? range.filter((l) => matchesSearch(l, q)) : visibleToday),
     [range, q, visibleToday],
