@@ -12,6 +12,7 @@ import { SearchBox } from "@/components/cargo/SearchBox";
 import { Button } from "@/components/ui/button";
 import { PlateHistory } from "@/components/cargo/PlateHistory";
 import { AgendaImportDialog } from "@/components/cargo/AgendaImportDialog";
+import { ListFilter } from "@/components/cargo/ListFilter";
 import { useLoadLocks, useLoadsRange, useNow, useUpdateLoad } from "@/hooks/use-loads";
 import { getCurrentUser } from "@/lib/auth";
 import { agendaSyncOn, fetchClients, fetchContacts } from "@/lib/cargo-api";
@@ -29,6 +30,7 @@ import {
   canSelectWith,
   downloadCSV,
   formatPlateLine,
+  applyFilters,
   countsTime,
   importedToday,
   isAgendaLocked,
@@ -36,7 +38,9 @@ import {
   isFutureLoad,
   isOverdue,
   lockReason,
+  NO_FILTERS,
   sortByReadiness,
+  type ListFilters,
   matchesSearch,
   minutesSince,
   statusLabel,
@@ -77,8 +81,8 @@ function Faturamento() {
   /** E-mail da transportadora escolhido no modal de CT-e. */
   const [cteFrom, setCteFrom] = useState("");
   const [agendaOpen, setAgendaOpen] = useState(false);
-  /** Marcado, some com as cargas previstas para depois de hoje. */
-  const [hideFuture, setHideFuture] = useState(false);
+  /** Filtros do funil. */
+  const [filters, setFilters] = useState<ListFilters>(NO_FILTERS);
   /** O botão da agenda só existe quando o sistema está ligado no Painel. */
   const { data: agendaOn = false } = useQuery({ queryKey: ["agenda-sync"], queryFn: agendaSyncOn });
   /** Troca de DT formalizada por e-mail: DT antigo x novo. */
@@ -123,10 +127,10 @@ function Faturamento() {
     () => contacts.filter((c) => c.kind === "carrier" && carrierMatches(c.carrier, carrierOf(selectedLoads[0] ?? ({} as CargoLoad)))),
     [contacts, selectedLoads, clients],
   );
-  const visibleToday = useMemo(
-    () => (hideFuture ? todays : [...todays, ...waitingToday, ...future]),
-    [todays, waitingToday, future, hideFuture],
-  );
+  const visibleToday = useMemo(() => {
+    const base = filters.hideFuture ? todays : [...todays, ...waitingToday, ...future];
+    return applyFilters(base, filters);
+  }, [todays, waitingToday, future, filters]);
   const results = useMemo(
     () => (q.trim() ? range.filter((l) => matchesSearch(l, q)) : visibleToday),
     [range, q, visibleToday],
@@ -253,9 +257,6 @@ function Faturamento() {
   return (
     <div className="min-h-screen">
       <AppHeader profile="faturamento">
-        <Button size="sm" variant="secondary" onClick={exportDay}>
-          <Download className="h-4 w-4" /> Cargas do dia
-        </Button>
         <Button size="sm" variant="secondary" onClick={exportLiquidacao}>
           <Download className="h-4 w-4" /> Liquidação
         </Button>
@@ -273,15 +274,9 @@ function Faturamento() {
               {q.trim() ? `Resultados (${results.length})` : `Cargas de hoje (${visibleToday.length})`}
             </h2>
             {!q.trim() && (
-              <label className="mb-2 flex w-fit cursor-pointer items-center gap-2 text-sm text-muted-foreground">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-current"
-                  checked={hideFuture}
-                  onChange={(e) => setHideFuture(e.target.checked)}
-                />
-                Ocultar cargas futuras
-              </label>
+              <div className="mb-2">
+                <ListFilter filters={filters} onChange={setFilters} />
+              </div>
             )}
             {results.length ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
