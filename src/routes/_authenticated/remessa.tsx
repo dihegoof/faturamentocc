@@ -11,8 +11,9 @@ import { ImportTextDialog } from "@/components/cargo/ImportTextDialog";
 import { ImportMBDialog } from "@/components/cargo/ImportMBDialog";
 import { Button } from "@/components/ui/button";
 import { useLoadsRange, useNow } from "@/hooks/use-loads";
-import { countsTime, isAgendaLocked, isFutureLoad, lockReason, matchesSearch, sortByReadiness, todayISO, type CargoLoad } from "@/lib/cargo";
+import { applyFilters, countsTime, isAgendaLocked, isFutureLoad, lockReason, matchesSearch, NO_FILTERS, sortByReadiness, todayISO, type CargoLoad, type ListFilters } from "@/lib/cargo";
 import { cn } from "@/lib/utils";
+import { ListFilter } from "@/components/cargo/ListFilter";
 
 export const Route = createFileRoute("/_authenticated/remessa")({
   head: () => ({
@@ -41,8 +42,8 @@ function Remessa() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [importText, setImportText] = useState(false);
   const [mb, setMb] = useState(false);
-  /** Marcado, some com as cargas previstas para depois de hoje. */
-  const [hideFuture, setHideFuture] = useState(false);
+  /** Filtros do funil. */
+  const [filters, setFilters] = useState<ListFilters>(NO_FILTERS);
   const perDay = useMemo(() => {
     const m = new Map<string, number>();
     range.forEach((l) => m.set(l.load_date, (m.get(l.load_date) ?? 0) + 1));
@@ -54,6 +55,8 @@ function Remessa() {
     return [...[...days].reverse(), ...future];
   }, [perDay, days]);
   const searching = !!q.trim();
+  /** Lista do dia já com os filtros do funil aplicados. */
+  const dayList = applyFilters([...todays, ...waiting], filters);
   /** Cargas de hoje prontas para faturar: no topo da lista. */
   const todays = sortByReadiness(
     range.filter((l) => l.load_date === today && !isAgendaLocked(l)),
@@ -99,29 +102,23 @@ function Remessa() {
         {(searching || todays.length > 0) && (
           <section>
             <h2 className="mb-2 font-display text-lg font-bold uppercase">
-              {searching ? `Resultados (${results.length})` : `Cargas de hoje (${todays.length + waiting.length})`}
+              {searching ? `Resultados (${results.length})` : `Cargas de hoje (${dayList.length})`}
             </h2>
             {!searching && (
-              <label className="mb-2 flex w-fit cursor-pointer items-center gap-2 text-sm text-muted-foreground">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-current"
-                  checked={hideFuture}
-                  onChange={(e) => setHideFuture(e.target.checked)}
-                />
-                Ocultar cargas futuras
-              </label>
+              <div className="mb-2">
+                <ListFilter filters={filters} onChange={setFilters} />
+              </div>
             )}
-            {(searching ? results : [...todays, ...waiting]).length ? (
+            {(searching ? results : dayList).length ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-                {(searching ? results : [...todays, ...waiting]).map((l) => <div key={l.id}>{tile(l)}</div>)}
+                {(searching ? results : dayList).map((l) => <div key={l.id}>{tile(l)}</div>)}
               </div>
             ) : (
               <p className="py-6 text-center text-muted-foreground">Nenhuma carga encontrada nos últimos 30 dias.</p>
             )}
           </section>
         )}
-        {!searching && upcoming.length > 0 && !hideFuture && (
+        {!searching && upcoming.length > 0 && !filters.hideFuture && (
           <section>
             <h2 className="mb-1 font-display text-lg font-bold uppercase">Próximos dias ({upcoming.length})</h2>
             <p className="mb-2 text-sm text-muted-foreground">
