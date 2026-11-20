@@ -1,4 +1,4 @@
-import { Lock, Send } from "lucide-react";
+import { Check, Lock, Send } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -44,14 +44,16 @@ export function LoadTile({
   const dest = fat
     ? [load.destination_code, load.destination].filter(Boolean).join(" ")
     : cleanDestination(load.destination);
-  const finalLabel =
-    load.status === "finalizada"
+  const liquidated = !!load.liquidated_at;
+  const finalLabel = liquidated
+    ? "Liquidada"
+    : load.status === "finalizada"
       ? load.has_exit === false
         ? "Finalizada · sem saída"
         : "Finalizada · com saída"
       : statusLabel(load.status);
   const open = () => {
-    if (!lockedBy) onOpen();
+    if (!lockedBy && !liquidated) onOpen();
   };
   const cte = showTime && load.status === "impressa" ? cteTimer(load) : null;
 
@@ -70,7 +72,10 @@ export function LoadTile({
       title={lockedBy ? `Aberta por ${lockedBy}` : undefined}
       className={cn(
         "relative w-full cursor-pointer rounded-lg p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
-        toneFor(load, colored),
+        liquidated
+          ? "bg-neutral-200 text-neutral-700 ring-1 ring-neutral-300"
+          : toneFor(load, colored),
+        liquidated && "cursor-default hover:translate-y-0",
         lockedBy && "cursor-not-allowed opacity-40 grayscale hover:translate-y-0",
         className,
       )}
@@ -133,6 +138,12 @@ export function LoadTile({
             <WaitTimer since={load.wait_started_at} now={now} />
           </div>
         )
+      )}
+      {liquidated && (
+        <span className="absolute right-2 top-2 flex items-center gap-1 rounded bg-card/80 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+          <Check className="h-3 w-3" /> Liquidada
+          {load.liquidated_at ? ` · ${new Date(load.liquidated_at).toLocaleDateString("pt-BR")}` : ""}
+        </span>
       )}
       {lockedBy && (
         <span className="absolute right-2 top-2 flex items-center gap-1 rounded bg-card px-1.5 py-0.5 text-[10px] font-semibold text-foreground">
