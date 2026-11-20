@@ -408,7 +408,7 @@ function OrdersSection({ load }: { load: CargoLoad }) {
     <section className="grid gap-3 rounded-md border p-3 sm:grid-cols-3">
       <PillInput label="Ordem produto" value={load.product_order} onSave={save("product_order", "Ordem produto")} />
       <PillInput label="Ordem palete" value={load.pallet_order} onSave={save("pallet_order", "Ordem palete")} />
-      <PillInput label="Notas (NF) — opcional" value={load.invoice_numbers} onSave={save("invoice_numbers", "Notas")} />
+      <PillInput label="Notas (NF)" value={load.invoice_numbers} onSave={save("invoice_numbers", "Notas")} />
     </section>
   );
 }
@@ -548,7 +548,7 @@ function DeleteDialog({
           A carga será <strong>excluída</strong> do painel. Esta ação não pode ser desfeita.
         </p>
         <div className="space-y-1">
-          <Label htmlFor="del-reason" className="text-xs">Motivo (opcional)</Label>
+          <Label htmlFor="del-reason" className="text-xs">Motivo</Label>
           <Input
             id="del-reason"
             value={reason}
