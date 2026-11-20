@@ -26,6 +26,7 @@ export function LoadTile({
   lockedBy,
   onOpen,
   colored = true,
+  showTime = true,
   className,
 }: {
   load: CargoLoad;
@@ -34,6 +35,8 @@ export function LoadTile({
   lockedBy?: string | undefined;
   onOpen: () => void;
   colored?: boolean;
+  /** false enquanto a Remessa não importou a carga: nenhum tempo é mostrado. */
+  showTime?: boolean;
   className?: string;
 }) {
   const fat = profile === "faturamento";
@@ -50,7 +53,7 @@ export function LoadTile({
   const open = () => {
     if (!lockedBy) onOpen();
   };
-  const cte = load.status === "impressa" ? cteTimer(load) : null;
+  const cte = showTime && load.status === "impressa" ? cteTimer(load) : null;
 
   return (
     <div
@@ -124,6 +127,7 @@ export function LoadTile({
           </span>
         </div>
       ) : (
+        showTime &&
         load.status !== "finalizada" && (
           <div className="mt-2">
             <WaitTimer since={load.wait_started_at} now={now} />
