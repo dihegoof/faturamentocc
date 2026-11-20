@@ -11,7 +11,7 @@ import { ImportTextDialog } from "@/components/cargo/ImportTextDialog";
 import { ImportMBDialog } from "@/components/cargo/ImportMBDialog";
 import { Button } from "@/components/ui/button";
 import { useLoadsRange, useNow } from "@/hooks/use-loads";
-import { isAgendaLocked, isFutureLoad, lockReason, matchesSearch, todayISO, type CargoLoad } from "@/lib/cargo";
+import { countsTime, isAgendaLocked, isFutureLoad, lockReason, matchesSearch, sortByReadiness, todayISO, type CargoLoad } from "@/lib/cargo";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/remessa")({
@@ -41,6 +41,8 @@ function Remessa() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [importText, setImportText] = useState(false);
   const [mb, setMb] = useState(false);
+  /** Marcado, some com as cargas previstas para depois de hoje. */
+  const [hideFuture, setHideFuture] = useState(false);
   const perDay = useMemo(() => {
     const m = new Map<string, number>();
     range.forEach((l) => m.set(l.load_date, (m.get(l.load_date) ?? 0) + 1));
@@ -52,8 +54,13 @@ function Remessa() {
     return [...[...days].reverse(), ...future];
   }, [perDay, days]);
   const searching = !!q.trim();
-  /** Cargas de hoje: pela data prevista, não pela data de importação. */
-  const todays = range.filter((l) => l.load_date === today);
+  /** Cargas de hoje prontas para faturar: no topo da lista. */
+  const todays = sortByReadiness(
+    range.filter((l) => l.load_date === today && !isAgendaLocked(l)),
+    today,
+  );
+  /** De hoje e ainda aguardando a Remessa: descem para o fim. */
+  const waiting = range.filter((l) => l.load_date === today && isAgendaLocked(l));
   /** Previstas para depois de hoje: aparecem, mas bloqueadas. */
   const upcoming = range.filter((l) => isFutureLoad(l, today));
   const results = range.filter((l) => matchesSearch(l, q));
@@ -67,6 +74,7 @@ function Remessa() {
         profile="remessa"
         now={now}
         colored={l.load_date === today}
+        showTime={countsTime(l, today)}
         onOpen={() => { if (!locked) setOpenId(l.id); }}
         className={cn(locked && "cursor-not-allowed opacity-55 saturate-50")}
         aria-disabled={locked}
@@ -91,18 +99,29 @@ function Remessa() {
         {(searching || todays.length > 0) && (
           <section>
             <h2 className="mb-2 font-display text-lg font-bold uppercase">
-              {searching ? `Resultados (${results.length})` : `Cargas de hoje (${todays.length})`}
+              {searching ? `Resultados (${results.length})` : `Cargas de hoje (${todays.length + waiting.length})`}
             </h2>
-            {(searching ? results : todays).length ? (
+            {!searching && (
+              <label className="mb-2 flex w-fit cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-current"
+                  checked={hideFuture}
+                  onChange={(e) => setHideFuture(e.target.checked)}
+                />
+                Ocultar cargas futuras
+              </label>
+            )}
+            {(searching ? results : [...todays, ...waiting]).length ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-                {(searching ? results : todays).map((l) => <div key={l.id}>{tile(l)}</div>)}
+                {(searching ? results : [...todays, ...waiting]).map((l) => <div key={l.id}>{tile(l)}</div>)}
               </div>
             ) : (
               <p className="py-6 text-center text-muted-foreground">Nenhuma carga encontrada nos últimos 30 dias.</p>
             )}
           </section>
         )}
-        {!searching && upcoming.length > 0 && (
+        {!searching && upcoming.length > 0 && !hideFuture && (
           <section>
             <h2 className="mb-1 font-display text-lg font-bold uppercase">Próximos dias ({upcoming.length})</h2>
             <p className="mb-2 text-sm text-muted-foreground">
