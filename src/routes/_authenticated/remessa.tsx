@@ -101,14 +101,12 @@ function Remessa() {
         <SearchBox value={q} onChange={setQ} />
         {(searching || todays.length > 0) && (
           <section>
-            <h2 className="mb-2 font-display text-lg font-bold uppercase">
+            <div className="mb-2 flex items-center gap-2">
+            <h2 className="font-display text-lg font-bold uppercase">
               {searching ? `Resultados (${results.length})` : `Cargas de hoje (${dayList.length})`}
             </h2>
-            {!searching && (
-              <div className="mb-2">
-                <ListFilter filters={filters} onChange={setFilters} />
-              </div>
-            )}
+            {!searching && <ListFilter filters={filters} onChange={setFilters} />}
+            </div>
             {(searching ? results : dayList).length ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                 {(searching ? results : dayList).map((l) => <div key={l.id}>{tile(l)}</div>)}
