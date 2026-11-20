@@ -958,8 +958,25 @@ export function lockReason(
   return null;
 }
 
-/** Ordena a lista: prontas para faturar no topo, pendentes da Remessa embaixo. */
-export function sortByReadiness<T extends Pick<CargoLoad, "status" | "load_date">>(
+/**
+ * Ordem da lista, do topo para o fim:
+ * pendente faturamento > erro > impressa ag. CT-e > faturado >
+ * finalizada sem saída > finalizada com saída.
+ * Carga ainda aguardando a Remessa desce para depois de todas as prontas.
+ */
+const STATUS_ORDER: Record<string, number> = {
+  pendente: 0,
+  erro_virada: 1,
+  impressa: 2,
+  faturado: 3,
+};
+
+export function statusRank(l: Pick<CargoLoad, "status" | "has_exit">): number {
+  if (l.status === "finalizada") return l.has_exit === false ? 4 : 5;
+  return STATUS_ORDER[l.status] ?? 6;
+}
+
+export function sortByReadiness<T extends Pick<CargoLoad, "status" | "load_date" | "has_exit">>(
   loads: T[],
   today = todayISO(),
 ): T[] {
@@ -967,6 +984,74 @@ export function sortByReadiness<T extends Pick<CargoLoad, "status" | "load_date"
     const pa = isReadyToInvoice(a, today) ? 0 : 1;
     const pb = isReadyToInvoice(b, today) ? 0 : 1;
     if (pa !== pb) return pa - pb;
+    const ra = statusRank(a);
+    const rb = statusRank(b);
+    if (ra !== rb) return ra - rb;
     return (a.load_number ?? "").localeCompare(b.load_number ?? "", "pt-BR", { numeric: true });
   });
+}
+
+/** Filtros da listinha do funil. */
+export interface ListFilters {
+  hideFinalized: boolean;
+  hideFuture: boolean;
+}
+
+export const NO_FILTERS: ListFilters = { hideFinalized: false, hideFuture: false };
+
+/** Aplica os filtros do funil a uma lista já pronta. */
+export function applyFilters<T extends Pick<CargoLoad, "status" | "has_exit">>(
+  loads: T[],
+  filters: ListFilters,
+): T[] {
+  return loads.filter((l) => {
+    if (filters.hideFinalized && l.status === "finalizada") return false;
+    return true;
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Liquidação: período, critérios e confirmação                        */
+/* ------------------------------------------------------------------ */
+
+export interface LiquidationCriteria {
+  /** Só cargas com este código de produto (SKU). */
+  productCode?: string;
+  /** Só cargas faturadas por este usuário. */
+  user?: string;
+  from?: string;
+  to?: string;
+}
+
+/** Cargas pendentes de liquidação: finalizadas com saída e ainda não confirmadas. */
+export function pendingLiquidation<T extends Pick<CargoLoad, "status" | "has_exit" | "load_date">>(
+  loads: T[],
+): T[] {
+  return loads.filter((l) => l.status === "finalizada" && l.has_exit !== false);
+}
+
+/** Aplica os critérios escolhidos no menu de liquidação. */
+export function filterLiquidation<T extends CargoLoad>(
+  loads: T[],
+  c: LiquidationCriteria,
+): T[] {
+  return pendingLiquidation(loads).filter((l) => {
+    if (c.from && l.load_date < c.from) return false;
+    if (c.to && l.load_date > c.to) return false;
+    if (c.productCode) {
+      const tem = (l.cargo_products ?? []).some((p) => (p.code ?? "") === c.productCode);
+      if (!tem) return false;
+    }
+    if (c.user && (l as unknown as { liquidation_by?: string }).liquidation_by !== c.user) return false;
+    return true;
+  });
+}
+
+/** Resumo para o aviso de pendência na tela do faturamento. */
+export function liquidationLabel(c: LiquidationCriteria): string {
+  const partes: string[] = [];
+  if (c.from || c.to) partes.push(`período ${c.from ?? "início"} a ${c.to ?? "hoje"}`);
+  if (c.productCode) partes.push(`produto ${c.productCode}`);
+  if (c.user) partes.push(`usuário ${c.user}`);
+  return partes.length ? `por critério: ${partes.join(" · ")}` : "sem critério";
 }
