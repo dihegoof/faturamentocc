@@ -1003,13 +1003,18 @@ export interface ListFilters {
 
 export const NO_FILTERS: ListFilters = { hideFinalized: false, hideFuture: false };
 
-/** Aplica os filtros do funil a uma lista já pronta. */
-export function applyFilters<T extends Pick<CargoLoad, "status" | "has_exit">>(
+/**
+ * Aplica os filtros do funil a uma lista já pronta.
+ * "Futura" é carga prevista para depois de hoje.
+ */
+export function applyFilters<T extends Pick<CargoLoad, "status" | "has_exit" | "load_date">>(
   loads: T[],
   filters: ListFilters,
+  today = todayISO(),
 ): T[] {
   return loads.filter((l) => {
     if (filters.hideFinalized && l.status === "finalizada") return false;
+    if (filters.hideFuture && isFutureLoad(l, today)) return false;
     return true;
   });
 }
