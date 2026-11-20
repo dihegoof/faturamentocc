@@ -86,6 +86,10 @@ export interface CargoLoad {
   delete_reason?: string | null;
   erro_virada_at?: string | null;
   erro_virada_motivo?: string | null;
+  liquidated_at?: string | null;
+  liquidated_by?: string | null;
+  liquidation_export_id?: string | null;
+  liquidation_owner?: string | null;
 }
 
 export interface ParsedProduct {
