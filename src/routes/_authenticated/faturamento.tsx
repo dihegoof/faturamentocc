@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CalendarPlus, Download, Truck } from "lucide-react";
+import { CalendarPlus, Copy, Download, Mail, Truck } from "lucide-react";
 import { AccountShell } from "@/components/cargo/AccountShell";
 import { AppHeader } from "@/components/cargo/AppHeader";
 import { LoadModal } from "@/components/cargo/LoadModal";
@@ -20,6 +20,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { agendaSyncOn, fetchClients, fetchContacts } from "@/lib/cargo-api";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import { DialogFooter } from "@/components/ui/dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -335,7 +337,7 @@ function Faturamento() {
 
               <div className="mb-3 grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label className="text-xs">Menção da transportadora (2ª linha)</Label>
+                  <Label className="text-xs">Menção da transportadora <span className="text-destructive">*</span></Label>
                   <select
                     value={cteFrom}
                     onChange={(e) => setCteFrom(e.target.value)}
@@ -376,11 +378,14 @@ function Faturamento() {
         onOpenChange={setAgendaOpen}
         uploadedBy={me?.display_name ?? me?.email ?? undefined}
       />
-      <DtSwapDialog
-        swap={dtSwap}
-        contacts={contacts}
-        onClose={() => setDtSwap(null)}
-      />
+      {dtSwap && (
+        <DtSwapDialog
+          key={`${dtSwap.load.id}-${dtSwap.newDt}`}
+          swap={dtSwap}
+          contacts={contacts}
+          onClose={() => setDtSwap(null)}
+        />
+      )}
       <LoadModal
         load={open}
         onClose={() => setOpenId(null)}
@@ -408,7 +413,7 @@ function DtSwapDialog({
     plate: string | null;
     carrier: string | null;
     load: CargoLoad;
-  } | null;
+  };
   contacts: Parameters<typeof cteRecipients>[0];
   onClose: () => void;
 }) {
@@ -419,23 +424,27 @@ function DtSwapDialog({
   const [busy, setBusy] = useState(false);
   /** Vira true depois que o e-mail foi aberto: libera a confirmação da troca. */
   const [mailSent, setMailSent] = useState(false);
-  /** E-mail da transportadora escolhido pelo usuário neste modal. */
-  const [fromEmail, setFromEmail] = useState("");
 
   const carrierContacts = useMemo(
-    () => contacts.filter((c) => c.kind === "carrier" && carrierMatches(c.carrier, swap?.carrier)),
-    [contacts, swap?.carrier],
+    () => contacts.filter((c) => c.kind === "carrier" && carrierMatches(c.carrier, swap.carrier)),
+    [contacts, swap.carrier],
   );
 
-  // Destinatário continua sendo TODOS da transportadora + Torre; o que o
-  // usuário escolhe é apenas a menção que aparece na 2ª linha do corpo.
-  const auto = useMemo(() => cteRecipients(contacts, swap?.carrier ?? ""), [contacts, swap?.carrier]);
-  const to = useMemo(() => {
-    const chosen = carrierContacts.map((c) => c.email);
-    return [...chosen, ...auto.to.filter((e) => !chosen.includes(e))];
-  }, [carrierContacts, auto.to]);
+  /** Destinatário e cópia, editáveis como no CT-e manual. */
+  const auto = useMemo(() => cteRecipients(contacts, swap.carrier ?? ""), [contacts, swap.carrier]);
+  const [to, setTo] = useState("");
+  const [cc, setCc] = useState("");
+  /** Menção da 2ª linha: começa no 1º contato da lista. */
+  const [fromEmail, setFromEmail] = useState("");
 
-  if (!swap) return null;
+  const toList = useMemo(
+    () => (to ? to.split(/[;,\n]/).map((e) => e.trim()).filter(Boolean) : auto.to),
+    [to, auto.to],
+  );
+  const ccList = useMemo(
+    () => (cc ? cc.split(/[;,\n]/).map((e) => e.trim()).filter(Boolean) : auto.cc),
+    [cc, auto.cc],
+  );
 
   const { subject, body } = buildDtSwapEmail({
     oldDt: swap.oldDt,
@@ -450,7 +459,7 @@ function DtSwapDialog({
 
   /** 1º passo: só abre o Outlook. O DT ainda NÃO mudou. */
   const openMail = () => {
-    window.location.href = mailtoHref(to, auto.cc, subject, body);
+    window.location.href = mailtoHref(toList, ccList, subject, body);
     setMailSent(true);
   };
 
@@ -474,32 +483,61 @@ function DtSwapDialog({
     }
   };
 
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(`Assunto: ${subject}\n\n${body}`);
+      toast.success("Mensagem copiada");
+    } catch {
+      toast.error("Não foi possível copiar");
+    }
+  };
+
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-display text-2xl">Troca de DT</DialogTitle>
         </DialogHeader>
-        <p className="mb-3 text-sm text-muted-foreground">
-          Transporte antigo <strong>{swap.oldDt}</strong> → novo <strong>{swap.newDt}</strong>
-          {swap.plate ? ` · ${swap.plate}` : ""}
-        </p>
 
-        <label className="mb-3 flex items-center gap-2 text-sm">
-          <Checkbox checked={mdfe} onCheckedChange={(v) => setMdfe(v === true)} />
-          O CT-e desta carga tem MDF-e?
-        </label>
+        <div className="space-y-1">
+          <Label className="text-xs">Para <span className="text-destructive">*</span></Label>
+          <Textarea
+            rows={2}
+            value={to || toList.join("; ")}
+            onChange={(e) => setTo(e.target.value)}
+            className="font-mono text-xs"
+          />
+        </div>
 
-        <div className="mb-3 grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label className="text-xs">Cc</Label>
+          <Textarea
+            rows={2}
+            value={cc || ccList.join("; ")}
+            onChange={(e) => setCc(e.target.value)}
+            className="font-mono text-xs"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs">Assunto</Label>
+          <Input value={subject} readOnly className="h-9" />
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={mdfe} onCheckedChange={(v) => setMdfe(v === true)} />
+            Esta carga tem MDF-e?
+          </label>
           <div className="space-y-1">
-            <Label className="text-xs">Menção da transportadora (2ª linha)</Label>
+            <Label className="text-xs">Menção da transportadora</Label>
             <select
               value={fromEmail}
               onChange={(e) => setFromEmail(e.target.value)}
               className="h-9 w-full rounded-md border bg-background px-2 text-sm"
             >
               <option value="">
-                {carrierContacts.length ? "Mencionar todos" : "Nenhum cadastrado"}
+                {carrierContacts.length ? "1º contato da lista" : "Nenhum cadastrado"}
               </option>
               {carrierContacts.map((c) => (
                 <option key={c.email} value={c.email}>{c.email}</option>
@@ -507,41 +545,43 @@ function DtSwapDialog({
             </select>
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Notas fiscais (4ª linha)</Label>
-            <Input value={nfs} onChange={(e) => setNfs(e.target.value)} placeholder="117254 e 117255-2" className="h-9" />
+            <Label className="text-xs">Notas fiscais <span className="text-destructive">*</span></Label>
+            <Input
+              value={nfs}
+              onChange={(e) => setNfs(e.target.value)}
+              placeholder="117254 e 117255-2"
+              className="h-9"
+            />
           </div>
-          <div className="space-y-1 sm:col-span-2">
-            <Label className="text-xs">Motivo (3ª linha)</Label>
+          <div className="space-y-1">
+            <Label className="text-xs">Motivo <span className="text-destructive">*</span></Label>
             <Input value={motivo} onChange={(e) => setMotivo(e.target.value)} className="h-9" />
           </div>
         </div>
 
-        <p className="mb-1 text-sm"><strong>Para:</strong> {to.join("; ") || "—"}</p>
-        {auto.cc.length > 0 && <p className="mb-1 text-sm"><strong>Cópia:</strong> {auto.cc.join("; ")}</p>}
-        <p className="mb-3 text-sm"><strong>Assunto:</strong> {subject}</p>
-        <pre className="mb-4 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border bg-muted p-3 text-sm">
-          {body}
-        </pre>
+        <div className="space-y-1">
+          <Label className="text-xs">Mensagem</Label>
+          <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border bg-muted p-3 text-sm">
+            {body}
+          </pre>
+        </div>
 
-        {!mailSent ? (
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <span className="mr-auto text-sm text-muted-foreground">
-              Abra o e-mail primeiro. A troca só é efetivada depois que você confirmar.
-            </span>
-            <Button variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
-            <Button onClick={openMail} disabled={busy}>Abrir e-mail</Button>
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <span className="mr-auto text-sm">
-              E-mail enviado? Confirmar a troca para <strong>{swap.newDt}</strong>
-            </span>
-            <Button variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
-            <Button onClick={confirmSwap} disabled={busy}>
-              {busy ? "Alterando…" : "Confirmar troca de DT"}
-            </Button>
-          </div>
-        )}
+        <DialogFooter className="flex-wrap gap-2">
+          <span className="mr-auto text-sm text-muted-foreground">
+            {mailSent
+              ? `E-mail enviado? Confirmar a troca para ${swap.newDt}`
+              : "Abra o e-mail primeiro. A troca só é efetivada depois que você confirmar."}
+          </span>
+          <Button variant="outline" onClick={copiar} disabled={busy}>
+            <Copy className="mr-1 h-4 w-4" /> Copiar mensagem
+          </Button>
+          <Button variant="outline" onClick={openMail} disabled={busy}>
+            <Mail className="mr-1 h-4 w-4" /> Abrir no Outlook
+          </Button>
+          <Button onClick={confirmSwap} disabled={busy || !mailSent}>
+            {busy ? "Alterando…" : "Confirmar que solicitei"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
