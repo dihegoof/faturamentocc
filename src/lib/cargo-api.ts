@@ -565,3 +565,66 @@ export async function platePalletAlert(plate: string): Promise<string | null> {
   if (error) throw error;
   return (data as string | null) ?? null;
 }
+
+/* ------------------------------------------------------------------ */
+/* Liquidação                                                          */
+/* ------------------------------------------------------------------ */
+
+export async function registerLiquidationExport(p: {
+  loadIds: string[];
+  exportedBy: string;
+  mode: string;
+  criteria: Record<string, unknown>;
+  criteriaLabel: string;
+  fileName?: string;
+}): Promise<string> {
+  const { data, error } = await supabase.rpc("register_liquidation_export", {
+    p_load_ids: p.loadIds,
+    p_exported_by: p.exportedBy,
+    p_mode: p.mode,
+    p_criteria: p.criteria,
+    p_criteria_label: p.criteriaLabel,
+    p_file_name: p.fileName ?? null,
+  });
+  if (error) throw error;
+  return data as string;
+}
+
+/** Confirma em lote. Só o autor da exportação consegue. */
+export async function confirmLiquidation(exportId: string, confirmedBy: string): Promise<number> {
+  const { data, error } = await supabase.rpc("confirm_liquidation", {
+    p_export_id: exportId,
+    p_confirmed_by: confirmedBy,
+  });
+  if (error) throw error;
+  return data as number;
+}
+
+/** Pendências que aguardam validação. `mine` diz se é o próprio usuário. */
+export async function fetchLiquidationPendings(user: string) {
+  const { data, error } = await supabase.rpc("my_liquidation_pendings", { p_user: user });
+  if (error) throw error;
+  return (data ?? []) as {
+    id: string;
+    exported_by: string;
+    exported_at: string;
+    criteria_label: string | null;
+    loads_count: number;
+    file_name: string | null;
+    mine: boolean;
+  }[];
+}
+
+/** Cargas elegíveis: finalizada, com saída e ainda não liquidada. */
+export async function fetchPendentesLiquidacao(): Promise<CargoLoad[]> {
+  const { data, error } = await supabase
+    .from("cargo_loads")
+    .select("*")
+    .eq("status", "finalizada")
+    .not("has_exit", "is", false)
+    .is("liquidated_at", null)
+    .is("deleted_at", null)
+    .order("load_date");
+  if (error) throw error;
+  return data as CargoLoad[];
+}
