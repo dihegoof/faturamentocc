@@ -1,122 +1,146 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertCircle } from "lucide-react";
-import {
-  Dialog,
-  DialogPortal,
-  DialogOverlay,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { setMbDt } from "@/lib/cargo-api";
-import type { CargoLoad } from "@/lib/cargo";
+import { fmtNum, isValidPlate, normalizePlate, palletsFor, todayISO } from "@/lib/cargo";
+import { fetchCatalog, fetchClients, importLoads } from "@/lib/cargo-api";
 
-/**
- * Mini modal que abre sobre o card de uma carga MB: a Remessa importou sem
- * DT (é o Faturamento que informa). Só aparece uma vez, enquanto o DT
- * estiver vazio.
- */
-export function MbDtDialog({
-  load,
-  user,
-  onClose,
-}: {
-  load: CargoLoad | null;
-  user: string;
-  onClose: () => void;
-}) {
+type Row = { code: string; boxes: string };
+
+/** Origem de toda carga deste app: centro de Bauru. */
+const ORIGIN = "B0AC";
+
+/** MB (franquia): Remessa imports without DT; products typed by boxes. Faturamento fills the DT later. */
+export function ImportMBDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const qc = useQueryClient();
-  const [dt, setDt] = useState("");
-  const [busy, setBusy] = useState(false);
+  const { data: catalog = [] } = useQuery({ queryKey: ["catalog"], queryFn: fetchCatalog, enabled: open });
+  /** Clientes MB: os McDonald's cadastrados (filtro pelo nome). */
+  const { data: clientes = [] } = useQuery({
+    queryKey: ["clients"],
+    queryFn: fetchClients,
+    enabled: open,
+  });
+  const mbClients = clientes.filter((c) => /mc\s*donald|mcd/i.test(c.name ?? ""));
 
-  const salvar = async () => {
-    if (!load) return;
-    const limpo = dt.replace(/\D/g, "");
-    if (!limpo) {
-      toast.error("Informe o DT da carga");
-      return;
-    }
-    setBusy(true);
+  const empty = { load_number: "", plate: "", carrier: "", destination: "", load_date: todayISO() };
+  const [form, setForm] = useState(empty);
+  const [rows, setRows] = useState<Row[]>([{ code: "", boxes: "" }]);
+  const [saving, setSaving] = useState(false);
+  /** O destino escolhido no select (cliente MB). */
+  const destino = mbClients.find((c) => c.name === form.destination);
+
+  const lines = rows.map((r) => {
+    const p = catalog.find((c) => c.code === r.code);
+    const boxes = Number(r.boxes) || 0;
+    return { ...r, product: p, boxes, pallets: p ? palletsFor(boxes, Number(p.boxes_per_pallet)) : 0 };
+  });
+  const totalBoxes = lines.reduce((s, l) => s + l.boxes, 0);
+  const totalPallets = Math.round(lines.reduce((s, l) => s + l.pallets, 0) * 100) / 100;
+
+  const save = async (): Promise<void> => {
+    if (!form.load_number || !form.plate) { toast.error("Informe carga e placa"); return; }
+    const valid = lines.filter((l) => l.product && l.boxes > 0);
+    if (!valid.length) { toast.error("Informe ao menos um produto com caixas"); return; }
+    setSaving(true);
     try {
-      await setMbDt(load.id, limpo, user);
-      toast.success(`DT ${limpo} informado na carga ${load.load_number}`);
-      qc.invalidateQueries({ queryKey: ["loads"] });
-      qc.invalidateQueries({ queryKey: ["load-detail", load.id] });
-      setDt("");
-      onClose();
+      const { inserted, skipped } = await importLoads([{
+        ...form,
+        // Origem é sempre o centro de Bauru; quem marca a carga como MB é o source.
+        origin: ORIGIN,
+        destination_code: destino?.center_code ?? "",
+        destination: destino?.name ?? form.destination,
+        dt: "",
+        plate: normalizePlate(form.plate), pallets: totalPallets,
+        products: valid.map((l) => ({ code: l.product!.code, description: l.product!.short_name || l.product!.description, boxes: l.boxes })),
+        warnings: isValidPlate(form.plate) ? [] : [`Placa fora do padrão: ${normalizePlate(form.plate)}`],
+      }], "MB", "remessa");
+      if (skipped.length) toast.warning(`Carga ${form.load_number} já existe nesta data`);
+      if (inserted) {
+        toast.success("Carga MB importada — o Faturamento informa o DT");
+        qc.invalidateQueries({ queryKey: ["loads"] });
+        setForm(empty); setRows([{ code: "", boxes: "" }]); onOpenChange(false);
+      }
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
   };
 
   return (
-    <Dialog open={!!load} onOpenChange={(o) => { if (!o) onClose(); }}>
-      {/*
-        Montado à mão com Portal + Overlay em z-[300]: o DialogContent do
-        projeto fixa z-50 e não aceita classe no overlay, então por ele o
-        mini modal abria atrás do card da carga.
-      */}
-      <DialogPortal>
-        <DialogOverlay className="z-[300]" />
-        <DialogPrimitive.Content
-          /*
-            modal: o Radix prende o foco aqui dentro. Sem isso, clicar no
-            campo dispara o onOpenChange e o modal (e o card de trás) some.
-          */
-          onOpenAutoFocus={(e) => e.preventDefault()}
-          onInteractOutside={(e) => e.preventDefault()}
-          className="fixed left-[50%] top-[50%] z-[300] grid w-full max-w-md translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out sm:rounded-lg"
-        >
-          <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100">
-            <X className="h-4 w-4" />
-            <span className="sr-only">Fechar</span>
-          </DialogPrimitive.Close>
-        <DialogHeader>
-          <DialogTitle className="font-display text-2xl">Informar DT</DialogTitle>
-        </DialogHeader>
-
-        <p className="text-sm text-muted-foreground">
-          A carga <strong>{load?.load_number}</strong>
-          {load?.plate ? ` · ${load.plate}` : ""} é MB e veio sem DT — a Remessa
-          importa a placa e a transportadora, e o DT é informado aqui.
-        </p>
-
-        <div className="space-y-1">
-          <Label htmlFor="mb-dt" className="text-xs">
-            DT <span className="text-destructive">*</span>
-          </Label>
-          <Input
-            id="mb-dt"
-            value={dt}
-            onChange={(e) => setDt(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") void salvar(); }}
-            placeholder="Ex: 106960668"
-            className="h-9 font-mono"
-          />
-        </div>
-
-        <p className="flex items-start gap-2 text-xs text-muted-foreground">
-          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          O DT fica gravado na carga. Para alterar depois, use a troca de DT no card.
-        </p>
-
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button variant="outline" onClick={onClose} disabled={busy}>Depois</Button>
-            <Button onClick={salvar} disabled={busy || !dt.trim()}>
-              {busy ? "Gravando…" : "Informar DT"}
-            </Button>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogHeader><DialogTitle className="font-display text-2xl">Importar carga MB</DialogTitle></DialogHeader>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          {([["load_number", "Nº Carga"], ["plate", "Placa"], ["carrier", "Transportadora"], ["load_date", "Data"]] as const).map(([k, l]) => (
+            <div key={k} className="space-y-1">
+              <Label htmlFor={`mb-${k}`}>
+                {l} {k === "load_number" || k === "plate" ? <span className="text-destructive">*</span> : null}
+              </Label>
+              <Input id={`mb-${k}`} type={k === "load_date" ? "date" : "text"} value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} />
+            </div>
+          ))}
+          <div className="space-y-1">
+            <Label htmlFor="mb-destination">
+              Destino <span className="text-destructive">*</span>
+            </Label>
+            <select
+              id="mb-destination"
+              value={form.destination}
+              onChange={(e) => setForm({ ...form, destination: e.target.value })}
+              className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+            >
+              <option value="">Selecione…</option>
+              {mbClients.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.center_code ? `${c.center_code} — ` : ""}{c.name}
+                </option>
+              ))}
+            </select>
           </div>
-        </DialogPrimitive.Content>
-      </DialogPortal>
+        </div>
+        <div className="overflow-hidden rounded-md border">
+          <table className="w-full text-sm">
+            <thead className="bg-muted text-left text-xs uppercase text-muted-foreground">
+              <tr><th className="p-2">Produto</th><th className="p-2">Caixas</th><th className="p-2 text-right">Paletes</th><th /></tr>
+            </thead>
+            <tbody>
+              {lines.map((l, i) => (
+                <tr key={i} className="border-t">
+                  <td className="p-2">
+                    <select aria-label="Produto" value={l.code} onChange={(e) => setRows(rows.map((r, j) => (j === i ? { ...r, code: e.target.value } : r)))} className="h-8 w-full rounded-md border bg-background px-2">
+                      <option value="">Selecione…</option>
+                      {catalog.map((c) => <option key={c.id} value={c.code}>{c.sap_code || c.code} {c.short_name || c.description}</option>)}
+                    </select>
+                  </td>
+                  <td className="p-2"><Input type="number" min={0} aria-label="Caixas" className="h-8 w-28" value={l.boxes || ""} onChange={(e) => setRows(rows.map((r, j) => (j === i ? { ...r, boxes: e.target.value } : r)))} /></td>
+                  <td className="p-2 text-right font-mono">{l.pallets ? fmtNum(l.pallets) : "—"}</td>
+                  <td className="p-2 text-right">
+                    <Button size="icon" variant="ghost" aria-label="Remover linha" onClick={() => setRows(rows.filter((_, j) => j !== i))} disabled={rows.length === 1}><Trash2 className="h-4 w-4" /></Button>
+                  </td>
+                </tr>
+              ))}
+              <tr className="border-t bg-muted/50 font-semibold">
+                <td className="p-2"><Button size="sm" variant="ghost" onClick={() => setRows([...rows, { code: "", boxes: "" }])}><Plus className="h-4 w-4" /> Produto</Button></td>
+                <td className="p-2 font-mono">{fmtNum(totalBoxes)} cx</td>
+                <td className="p-2 text-right font-mono">{fmtNum(totalPallets)}</td>
+                <td />
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        {!mbClients.length && (
+          <p className="text-xs text-muted-foreground">
+            Nenhum cliente MB cadastrado — o Painel cadastra os McDonald's.
+          </p>
+        )}
+        {!catalog.length && <p className="text-xs text-muted-foreground">Nenhum produto cadastrado — o Painel cadastra os produtos.</p>}
+        <DialogFooter><Button onClick={save} disabled={saving}>Gravar carga MB</Button></DialogFooter>
+      </DialogContent>
     </Dialog>
   );
 }
