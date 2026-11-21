@@ -53,12 +53,6 @@ export function AgendaSyncToggle({ me }: { me?: string }) {
           </span>
         </span>
       </label>
-
-      <p className="mt-3 text-sm text-muted-foreground">
-        <strong>Aviso de pallets por placa:</strong> automático. Avisa a Remessa e o Faturamento
-        quando a carga passa do maior valor que a placa já levou — é uma segurança contra
-        divergência e não pode ser desligado.
-      </p>
     </section>
   );
 }

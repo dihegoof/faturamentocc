@@ -112,15 +112,17 @@ function Faturamento() {
     () => sortByReadiness(range.filter((l) => showsInToday(l, today)), today),
     [range, today],
   );
-  /** De hoje, mas a Remessa ainda não importou: vão para o fim da lista. */
-  const waitingToday = useMemo(
-    () => range.filter((l) => isAwaitingRemessa(l, today)),
-    [range, today],
-  );
   /** Previstas para depois de hoje. */
   const future = useMemo(() => range.filter((l) => isFutureLoad(l, today)), [range, today]);
   /** Cargas de dias anteriores que nunca foram finalizadas: pendência de checagem. */
-  const pendings = useMemo(() => range.filter((l) => isOverdue(l, today)), [range, today]);
+  /** Pendências: as não finalizadas de dias anteriores MAIS as aguardando Remessa. */
+  const pendings = useMemo(
+    () => sortByReadiness(
+      range.filter((l) => isOverdue(l, today) || isAgendaLocked(l)),
+      today,
+    ),
+    [range, today],
+  );
   const selectedLoads = useMemo(
     () => selected.map((id) => range.find((l) => l.id === id)).filter(Boolean) as CargoLoad[],
     [selected, range],
@@ -134,9 +136,10 @@ function Faturamento() {
     () => contacts.filter((c) => c.kind === "carrier" && carrierMatches(c.carrier, carrierOf(selectedLoads[0] ?? ({} as CargoLoad)))),
     [contacts, selectedLoads, clients],
   );
+  /** Só o que entrou na operação: as aguardando Remessa vivem nas Pendências. */
   const visibleToday = useMemo(
-    () => applyFilters([...todays, ...waitingToday, ...future], filters, today),
-    [todays, waitingToday, future, filters, today],
+    () => applyFilters([...todays, ...future], filters, today),
+    [todays, future, filters, today],
   );
   const results = useMemo(
     () => (q.trim() ? range.filter((l) => matchesSearch(l, q)) : visibleToday),
@@ -298,13 +301,15 @@ function Faturamento() {
         {pendings.length > 0 && (
           <section className="rounded-xl border border-destructive/40 bg-destructive/5 p-4">
             <h2 className="mb-1 font-display text-lg font-bold uppercase text-destructive">
-              Pendências — verificar ({pendings.length})
+              Pendências — verificar ({applyFilters(pendings, filters, today).length})
             </h2>
             <p className="mb-3 text-sm text-muted-foreground">
               Cargas que viraram o dia sem finalizar. Confira o que aconteceu e finalize.
             </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-              {pendings.map((l) => <div key={l.id}>{tile(l)}</div>)}
+              {applyFilters(pendings, filters, today).map((l) => (
+                <div key={l.id}>{tile(l)}</div>
+              ))}
             </div>
           </section>
         )}
