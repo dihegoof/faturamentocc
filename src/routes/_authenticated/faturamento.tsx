@@ -152,6 +152,8 @@ function Faturamento() {
     () => applyFilters([...todays, ...future], filters, today).filter((l) => !isAgendaLocked(l)),
     [todays, future, filters, today],
   );
+  /** Histórico: sincronizadas antes, aguardando Remessa por último. */
+  const historySorted = useMemo(() => sortByReadiness(range, today), [range, today]);
   const results = useMemo(
     () => (q.trim() ? range.filter((l) => matchesSearch(l, q)) : visibleToday),
     [range, q, visibleToday],
@@ -327,7 +329,7 @@ function Faturamento() {
         )}
 
         {!q.trim() && (
-          <HistoryStrip title="Histórico de cargas" items={range} render={tile} today={today} selector />
+          <HistoryStrip title="Histórico de cargas" items={historySorted} render={tile} today={today} selector />
         )}
         {selectedLoads.length > 0 && (
           <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 p-3 backdrop-blur">

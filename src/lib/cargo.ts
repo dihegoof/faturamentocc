@@ -22,8 +22,14 @@ export const statusLabel = (s: string) => STATUSES.find((x) => x.key === s)?.lab
 export const CORTE_REASONS = ["Corte", "Aguardando valor no sistema", "Carga com erro"];
 
 /** Card background tone per status; finalizada splits by whether the truck left. */
-export function cardTone(load: Pick<CargoLoad, "status" | "has_exit">): string {
-  if (load.status === "finalizada") return load.has_exit === false ? "finalizada-sem" : "finalizada-com";
+export function cardTone(
+  load: Pick<CargoLoad, "status" | "has_exit" | "liquidated_at">,
+): string {
+  // Liquidada e finalizada com saída compartilham a cor de conclusão.
+  if (load.liquidated_at) return "concluida";
+  if (load.status === "finalizada") {
+    return load.has_exit === false ? "finalizada-sem" : "concluida";
+  }
   return load.status;
 }
 

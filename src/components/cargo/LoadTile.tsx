@@ -72,10 +72,8 @@ export function LoadTile({
       title={lockedBy ? `Aberta por ${lockedBy}` : undefined}
       className={cn(
         "relative w-full cursor-pointer rounded-lg p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
-        liquidated
-          ? "bg-neutral-200 text-neutral-700 ring-1 ring-neutral-300"
-          : toneFor(load, colored),
-        liquidated && "cursor-default hover:translate-y-0",
+        toneFor(load, colored),
+        liquidated && "cursor-default ring-2 ring-current/30 hover:translate-y-0",
         lockedBy && "cursor-not-allowed opacity-40 grayscale hover:translate-y-0",
         className,
       )}

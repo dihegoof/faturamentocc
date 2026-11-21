@@ -176,7 +176,7 @@ function Remessa() {
           <HistoryStrip
             title={`Histórico — previstas para ${date.slice(8, 10)}/${date.slice(5, 7)} (${dayLoads.length})`}
             empty="Nenhuma carga prevista para este dia"
-            items={dayLoads}
+            items={sortByReadiness(dayLoads, today)}
             render={tile}
           />
         )}
