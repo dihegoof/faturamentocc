@@ -14,6 +14,7 @@ import { PlateHistory } from "@/components/cargo/PlateHistory";
 import { AgendaImportDialog } from "@/components/cargo/AgendaImportDialog";
 import { ListFilter } from "@/components/cargo/ListFilter";
 import { AwaitingButton, AwaitingDialog } from "@/components/cargo/AwaitingDialog";
+import { MbDtDialog } from "@/components/cargo/MbDtDialog";
 import { LiquidationDialog } from "@/components/cargo/LiquidationDialog";
 import { LiquidationPending } from "@/components/cargo/LiquidationPending";
 import { useLoadLocks, useLoadsRange, useNow, useUpdateLoad } from "@/hooks/use-loads";
@@ -44,6 +45,7 @@ import {
   isOverdue,
   lockReason,
   NO_FILTERS,
+  needsMbDt,
   showsInToday,
   sortByReadiness,
   type ListFilters,
@@ -89,6 +91,8 @@ function Faturamento() {
   const [agendaOpen, setAgendaOpen] = useState(false);
   const [liqOpen, setLiqOpen] = useState(false);
   const [awaitingOpen, setAwaitingOpen] = useState(false);
+  /** Carga MB aberta que ainda está sem DT: dispara o mini modal. */
+  const [mbDtFor, setMbDtFor] = useState<CargoLoad | null>(null);
   const meName = me?.display_name ?? me?.email ?? "Faturamento";
   /** Filtros do funil. */
   const [filters, setFilters] = useState<ListFilters>(NO_FILTERS);
@@ -159,6 +163,12 @@ function Faturamento() {
     [range, q, visibleToday],
   );
 
+  /** Abre o card; se for MB sem DT, o mini modal aparece por cima. */
+  const openLoad = (l: CargoLoad) => {
+    setOpenId(l.id);
+    if (needsMbDt(l)) setMbDtFor(l);
+  };
+
   const registerExit = (l: CargoLoad) => {
     update(l, { has_exit: true }, "Saída registrada", "faturamento").catch((e: Error) => toast.error(e.message));
     toast.success(`${l.plate ?? `Carga ${l.load_number}`}: saída registrada`);
@@ -222,7 +232,7 @@ function Faturamento() {
         lockedBy={locks[l.id]}
         colored={importedToday(l, today)}
         showTime={countsTime(l, today)}
-        onOpen={() => { if (!locked) setOpenId(l.id); }}
+        onOpen={() => { if (!locked) openLoad(l); }}
         className={cn("min-w-0 flex-1", locked && "cursor-not-allowed opacity-55 saturate-50")}
         aria-disabled={locked}
         title={lockReason(l, today) ?? undefined}
@@ -322,7 +332,7 @@ function Faturamento() {
               Pendências — verificar ({applyFilters(pendings, filters, today).length})
             </h2>
             <p className="mb-3 text-sm text-muted-foreground">
-              Cargas aguardando confirmação de status:
+              Cargas que viraram o dia sem finalizar. Confira o que aconteceu e finalize.
             </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
               {applyFilters(pendings, filters, today).map((l) => (
@@ -390,6 +400,11 @@ function Faturamento() {
           </div>
         )}
       </main>
+      <MbDtDialog
+        load={mbDtFor}
+        user={meName}
+        onClose={() => setMbDtFor(null)}
+      />
       <AwaitingDialog
         open={awaitingOpen}
         onOpenChange={setAwaitingOpen}
@@ -600,7 +615,7 @@ function DtSwapDialog({
           <span className="mr-auto text-sm text-muted-foreground">
             {mailSent
               ? `E-mail enviado? Confirmar a troca para ${swap.newDt}`
-              : ""}
+              : "Abra o e-mail primeiro. A troca só é efetivada depois que você confirmar."}
           </span>
           <Button variant="outline" onClick={copiar} disabled={busy}>
             <Copy className="mr-1 h-4 w-4" /> Copiar mensagem
