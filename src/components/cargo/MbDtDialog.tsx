@@ -68,6 +68,12 @@ export function MbDtDialog({
       <DialogPortal>
         <DialogOverlay className="z-[300]" />
         <DialogPrimitive.Content
+          /*
+            modal: o Radix prende o foco aqui dentro. Sem isso, clicar no
+            campo dispara o onOpenChange e o modal (e o card de trás) some.
+          */
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
           className="fixed left-[50%] top-[50%] z-[300] grid w-full max-w-md translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out sm:rounded-lg"
         >
           <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100">
@@ -90,7 +96,6 @@ export function MbDtDialog({
           </Label>
           <Input
             id="mb-dt"
-            autoFocus
             value={dt}
             onChange={(e) => setDt(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") void salvar(); }}
