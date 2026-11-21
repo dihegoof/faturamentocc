@@ -2,7 +2,16 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AlertCircle } from "lucide-react";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogPortal,
+  DialogOverlay,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,7 +60,20 @@ export function MbDtDialog({
 
   return (
     <Dialog open={!!load} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-md">
+      {/*
+        Montado à mão com Portal + Overlay em z-[300]: o DialogContent do
+        projeto fixa z-50 e não aceita classe no overlay, então por ele o
+        mini modal abria atrás do card da carga.
+      */}
+      <DialogPortal>
+        <DialogOverlay className="z-[300]" />
+        <DialogPrimitive.Content
+          className="fixed left-[50%] top-[50%] z-[300] grid w-full max-w-md translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out sm:rounded-lg"
+        >
+          <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100">
+            <X className="h-4 w-4" />
+            <span className="sr-only">Fechar</span>
+          </DialogPrimitive.Close>
         <DialogHeader>
           <DialogTitle className="font-display text-2xl">Informar DT</DialogTitle>
         </DialogHeader>
@@ -82,13 +104,14 @@ export function MbDtDialog({
           O DT fica gravado na carga. Para alterar depois, use a troca de DT no card.
         </p>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={busy}>Depois</Button>
-          <Button onClick={salvar} disabled={busy || !dt.trim()}>
-            {busy ? "Gravando…" : "Informar DT"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={onClose} disabled={busy}>Depois</Button>
+            <Button onClick={salvar} disabled={busy || !dt.trim()}>
+              {busy ? "Gravando…" : "Informar DT"}
+            </Button>
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPortal>
     </Dialog>
   );
 }
