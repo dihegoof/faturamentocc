@@ -206,7 +206,11 @@ function Faturamento() {
     setSelected([]);
   };
 
-  const tile = (l: CargoLoad) => {
+  /**
+   * `inDayList` diz se o card está na lista do dia. O caminhão (registrar
+   * saída) e o checkbox de CT-e só aparecem lá — no histórico não fazem sentido.
+   */
+  const tile = (l: CargoLoad, inDayList = false) => {
     /** Alguém com a carga aberta, ou carga da agenda ainda não liberada. */
     const locked = !!locks[l.id] || isAgendaLocked(l) || isFutureLoad(l, today);
     return (
@@ -223,7 +227,7 @@ function Faturamento() {
         aria-disabled={locked}
         title={lockReason(l, today) ?? undefined}
       />
-      {l.status === "impressa" && importedToday(l, today) && (
+      {inDayList && l.status === "impressa" && importedToday(l, today) && (
         <label
           className="mt-1 flex shrink-0 cursor-pointer flex-col items-center gap-0.5 text-[10px] text-muted-foreground"
           title="Marcar para solicitar CT-e em lote"
@@ -238,7 +242,7 @@ function Faturamento() {
           CT-e
         </label>
       )}
-      {l.status === "finalizada" && l.has_exit === false && (
+      {inDayList && l.status === "finalizada" && l.has_exit === false && (
         <button
           type="button"
           onClick={() => registerExit(l)}
@@ -303,7 +307,7 @@ function Faturamento() {
             </div>
             {results.length ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-                {results.map((l) => <div key={l.id}>{tile(l)}</div>)}
+                {results.map((l) => <div key={l.id}>{tile(l, true)}</div>)}
               </div>
             ) : (
               <p className="py-6 text-center text-muted-foreground">Nenhuma carga encontrada nos últimos 30 dias.</p>
