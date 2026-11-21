@@ -492,7 +492,7 @@ function StatusSection({ load, onDone }: { load: CargoLoad; onDone: () => void }
       )}
       {errorMode && (
         <div className="space-y-2 rounded-md border border-destructive/40 p-3">
-          <p className="text-sm font-semibold">Motivo do erro (aparece para a Remessa):</p>
+          <p className="text-sm font-semibold">Motivo:</p>
           <div className="flex flex-wrap gap-2">
             {CORTE_REASONS.map((r) => (
               <Button key={r} size="sm" variant="outline" onClick={() => apply("corte", r)}>
