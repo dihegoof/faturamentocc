@@ -105,7 +105,7 @@ export function LoadModal({
                     variant="outline"
                     className="text-destructive hover:text-destructive"
                     onClick={() => setDelOpen(true)}
-                    title="Excluir carga (o admin pode restaurar)"
+                    title="Excluir carga"
                   >
                     <Trash2 className="h-4 w-4" /> Excluir
                   </Button>
@@ -408,7 +408,7 @@ function OrdersSection({ load }: { load: CargoLoad }) {
     <section className="grid gap-3 rounded-md border p-3 sm:grid-cols-3">
       <PillInput label="Ordem produto" value={load.product_order} onSave={save("product_order", "Ordem produto")} />
       <PillInput label="Ordem palete" value={load.pallet_order} onSave={save("pallet_order", "Ordem palete")} />
-      <PillInput label="Notas (NF)" value={load.invoice_numbers} onSave={save("invoice_numbers", "Notas")} />
+      <PillInput label="Notas fiscais" value={load.invoice_numbers} onSave={save("invoice_numbers", "Notas")} />
     </section>
   );
 }
@@ -482,12 +482,11 @@ function StatusSection({ load, onDone }: { load: CargoLoad; onDone: () => void }
               {(load.has_exit === true) === v && <Check className="mr-1 inline h-4 w-4" />}{l}
             </button>
           ))}
-          <span className="text-xs text-muted-foreground">Só “com saída” entra na liquidação.</span>
         </div>
       )}
       {errorMode && (
         <div className="space-y-2 rounded-md border border-destructive/40 p-3">
-          <p className="text-sm font-semibold">Motivo do erro (aparece para a Remessa):</p>
+          <p className="text-sm font-semibold">Motivo do erro:</p>
           <div className="flex flex-wrap gap-2">
             {CORTE_REASONS.map((r) => (
               <Button key={r} size="sm" variant="outline" onClick={() => apply("corte", r)}>

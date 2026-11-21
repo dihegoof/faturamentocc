@@ -48,9 +48,7 @@ export function AgendaSyncToggle({ me }: { me?: string }) {
         <span>
           <strong>Sincronização da Agenda</strong>
           <span className="block text-muted-foreground">
-            Ligada: o Faturamento sobe a agenda e as cargas ficam aguardando a Remessa
-            confirmar placa e transportadora. Desligada: o app funciona como antes, com a
-            Remessa importando e criando as cargas.
+            Caso esta opção esteja marcada, as cargas dependem de sincronização com agenda.
           </span>
         </span>
       </label>

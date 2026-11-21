@@ -116,7 +116,7 @@ export function LiquidationDialog({
 
         <div className="space-y-3">
           <div className="space-y-1">
-            <Label className="text-xs">O que exportar</Label>
+            <Label className="text-xs">Selecione o tipo de exportação:</Label>
             <select
               value={modo}
               onChange={(e) => setModo(e.target.value as Modo)}

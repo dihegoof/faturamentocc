@@ -107,14 +107,13 @@ export function AgendaImportDialog({
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Não feche esta janela — a importação termina sozinha.
+              Não feche esta janela, aguarde o fim do processo.
             </p>
           </div>
         ) : !loads ? (
           <>
             <p className="text-sm text-muted-foreground">
-              Selecione o arquivo da agenda (.xlsx). O app lê a aba <strong>Programação</strong> e
-              cria as cargas aguardando a Remessa definir placa e transportadora.
+              Faça o upload da Agenda de programação para sincronização de cargas
             </p>
             <button
               type="button"
@@ -123,7 +122,7 @@ export function AgendaImportDialog({
             >
               <Upload className="h-8 w-8" />
               <span className="font-semibold">Clique para escolher o arquivo</span>
-              <span className="text-xs">.xlsx ou .xls — só a aba Programação é lida</span>
+              <span className="text-xs">somente arquivo de programações serão aceitos!</span>
             </button>
             <input
               ref={fileRef}

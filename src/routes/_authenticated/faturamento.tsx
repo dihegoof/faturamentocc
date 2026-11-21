@@ -300,7 +300,7 @@ function Faturamento() {
               Pendências — verificar ({pendings.length})
             </h2>
             <p className="mb-3 text-sm text-muted-foreground">
-              Cargas que viraram o dia sem finalizar. Confira o que aconteceu e finalize.
+             Cargas pendentes devido status indefinido:
             </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
               {pendings.map((l) => <div key={l.id}>{tile(l)}</div>)}
@@ -569,8 +569,8 @@ function DtSwapDialog({
         <DialogFooter className="flex-wrap gap-2">
           <span className="mr-auto text-sm text-muted-foreground">
             {mailSent
-              ? `E-mail enviado? Confirmar a troca para ${swap.newDt}`
-              : "Abra o e-mail primeiro. A troca só é efetivada depois que você confirmar."}
+              ? `Efetivar alteração para ${swap.newDt}`
+              : "Alteração será concretizada após o envio do email!"}
           </span>
           <Button variant="outline" onClick={copiar} disabled={busy}>
             <Copy className="mr-1 h-4 w-4" /> Copiar mensagem

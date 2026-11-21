@@ -18,9 +18,6 @@ export function CatalogSection() {
   return (
     <section className="space-y-3 rounded-lg border p-4">
       <h2 className="font-display text-xl font-bold">Produtos</h2>
-      <p className="text-xs text-muted-foreground">
-        ID cliente = código que vem na planilha da Remessa. Cód. SAP e nome curto aparecem nos cards do Faturamento e na carga MB.
-      </p>
       <div className="overflow-x-auto rounded-md border">
         <table className="w-full text-sm">
           <thead className="bg-muted text-left text-xs uppercase text-muted-foreground">

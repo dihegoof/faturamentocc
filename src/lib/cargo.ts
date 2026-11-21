@@ -19,7 +19,7 @@ export const STATUSES: { key: CargoStatus; label: string; tone: string }[] = [
 
 export const statusLabel = (s: string) => STATUSES.find((x) => x.key === s)?.label ?? s;
 
-export const CORTE_REASONS = ["Corte", "Aguardando valor no sistema", "Carga com erro"];
+export const CORTE_REASONS = ["Falta de saldo de produto", "Dados divergêntes"];
 
 /** Card background tone per status; finalizada splits by whether the truck left. */
 export function cardTone(load: Pick<CargoLoad, "status" | "has_exit">): string {
@@ -698,7 +698,7 @@ export function buildDtSwapEmail(
 ): { subject: string; body: string } {
   const carrier = (swap.carrier ?? "").trim();
   const subject = `Troca de DT: ${swap.newDt} | ${carrier.toUpperCase()}`;
-  const motivo = (swap.motivo ?? "").trim() || "faturamento inverter SKU";
+  const motivo = (swap.motivo ?? "").trim() || "divergência de faturamento";
   // A 2ª linha cita só o e-mail selecionado — sem mailto:, que o Outlook
   // já transforma em link e ficava aparecendo duplicado.
   const carrierMention = `<${swap.mention?.trim() || carrier}>`;
