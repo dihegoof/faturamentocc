@@ -115,10 +115,14 @@ function Faturamento() {
   /** Previstas para depois de hoje. */
   const future = useMemo(() => range.filter((l) => isFutureLoad(l, today)), [range, today]);
   /** Cargas de dias anteriores que nunca foram finalizadas: pendência de checagem. */
-  /** Pendências: as não finalizadas de dias anteriores MAIS as aguardando Remessa. */
+  /**
+   * Pendências do FATURAMENTO: só carga já sincronizada pela Remessa que
+   * virou o dia sem "finalizada com saída". As que ainda aguardam Remessa
+   * NÃO entram aqui — elas são pendência da Remessa.
+   */
   const pendings = useMemo(
     () => sortByReadiness(
-      range.filter((l) => isOverdue(l, today) || isAgendaLocked(l)),
+      range.filter((l) => isOverdue(l, today) && !isAgendaLocked(l)),
       today,
     ),
     [range, today],

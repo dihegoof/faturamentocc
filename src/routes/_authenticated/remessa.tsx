@@ -11,7 +11,7 @@ import { ImportTextDialog } from "@/components/cargo/ImportTextDialog";
 import { ImportMBDialog } from "@/components/cargo/ImportMBDialog";
 import { Button } from "@/components/ui/button";
 import { useLoadsRange, useNow } from "@/hooks/use-loads";
-import { applyFilters, countsTime, isAgendaLocked, isFutureLoad, lockReason, matchesSearch, NO_FILTERS, showsInToday, sortByReadiness, todayISO, type CargoLoad, type ListFilters } from "@/lib/cargo";
+import { applyFilters, countsTime, isAgendaLocked, isAwaitingRemessa, isFutureLoad, lockReason, matchesSearch, NO_FILTERS, showsInToday, sortByReadiness, todayISO, type CargoLoad, type ListFilters } from "@/lib/cargo";
 import { cn } from "@/lib/utils";
 import { ListFilter } from "@/components/cargo/ListFilter";
 
@@ -60,15 +60,23 @@ function Remessa() {
     range.filter((l) => showsInToday(l, today)),
     today,
   );
-  /** De hoje e ainda aguardando a Remessa: descem para o fim. */
-  const waiting = range.filter((l) => l.load_date === today && isAgendaLocked(l));
+  /**
+   * Pendências da REMESSA: cargas aguardando sincronia cujo dia já passou
+   * (ou chegou). Só a Remessa vê esta lista.
+   */
+  const pendingsRemessa = sortByReadiness(
+    range.filter((l) => isAwaitingRemessa(l, today)),
+    today,
+  );
   /** Previstas para depois de hoje: aparecem, mas bloqueadas. */
   const upcoming = range.filter((l) => isFutureLoad(l, today));
   /** Lista do dia já com os filtros do funil aplicados.
    *  Declarada depois de todays e waiting de propósito: usa os dois. */
-  const dayList = applyFilters([...todays, ...waiting], filters, today);
+  const dayList = applyFilters(todays, filters, today);
   /** As futuras também respeitam o funil. */
   const upcomingVisible = applyFilters(upcoming, filters, today);
+  /** As pendências da Remessa também respeitam o funil. */
+  const pendingsVisible = applyFilters(pendingsRemessa, filters, today);
   const results = range.filter((l) => matchesSearch(l, q));
   const dayLoads = range.filter((l) => l.load_date === date);
   const tile = (l: CargoLoad) => {
@@ -119,6 +127,21 @@ function Remessa() {
             )}
           </section>
         )}
+        {!searching && pendingsVisible.length > 0 && (
+          <section className="rounded-xl border border-destructive/40 bg-destructive/5 p-4">
+            <h2 className="mb-1 font-display text-lg font-bold uppercase text-destructive">
+              Pendências de sincronia ({pendingsVisible.length})
+            </h2>
+            <p className="mb-2 text-sm text-muted-foreground">
+              Cargas que o Faturamento subiu e ainda não foram importadas aqui. Importe pelo
+              botão acima para sincronizar.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {pendingsVisible.map((l) => <div key={l.id}>{tile(l)}</div>)}
+            </div>
+          </section>
+        )}
+
         {!searching && upcomingVisible.length > 0 && (
           <section>
             <h2 className="mb-1 font-display text-lg font-bold uppercase">Próximos dias ({upcomingVisible.length})</h2>
