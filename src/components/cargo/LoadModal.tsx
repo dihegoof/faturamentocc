@@ -92,8 +92,7 @@ export function LoadModal({
                     : cleanDestination(load.destination)}
                 </span>
                 <div className="ml-auto flex gap-2">
-                  {/* Solicitar CT-e é ação de "Impressa ag. CT-e" — antes disso não faz sentido. */}
-                  {fat && load.status === "impressa" && (
+                  {fat && (
                     <Button size="sm" variant="outline" onClick={() => setCteOpen(true)}>
                       <Mail className="h-4 w-4" /> CT-e
                     </Button>
@@ -436,6 +435,9 @@ function StatusSection({ load, onDone }: { load: CargoLoad; onDone: () => void }
   const [other, setOther] = useState("");
 
   const setExit = (exit: boolean) => {
+    // Sai do modo erro: o painel de motivo sumiria junto com a troca de status.
+    setErrorMode(false);
+    setOther("");
     if (load.status === "finalizada" && load.has_exit === exit) return;
     update(load, { status: "finalizada", has_exit: exit, corte_reason: null },
       exit ? "Finalizada — com saída" : "Finalizada — sem saída", "faturamento").catch((e: Error) => toast.error(e.message));
@@ -446,6 +448,11 @@ function StatusSection({ load, onDone }: { load: CargoLoad; onDone: () => void }
     if (c === "pendente") return; // não é uma escolha manual
     if (c === current && c !== "corte") return;
     if (c === "finalizada") return setExit(false);
+    // Escolheu outro status? O motivo de erro não faz mais sentido.
+    if (c !== "corte") {
+      setErrorMode(false);
+      setOther("");
+    }
     const patch: Partial<CargoLoad> =
       c === "corte"
           ? { status: "corte", corte_reason: reason ?? null }
