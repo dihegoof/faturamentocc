@@ -237,6 +237,21 @@ function Faturamento() {
         aria-disabled={locked}
         title={lockReason(l, today) ?? undefined}
       />
+      {inDayList && l.status === "impressa" && importedToday(l, today) && (
+        <label
+          className="mt-1 flex shrink-0 cursor-pointer flex-col items-center gap-0.5 text-[10px] text-muted-foreground"
+          title="Marcar para solicitar CT-e em lote"
+        >
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-current"
+            checked={selected.includes(l.id)}
+            onChange={() => toggleSelect(l)}
+            aria-label={`Selecionar carga ${l.load_number} para CT-e`}
+          />
+          CT-e
+        </label>
+      )}
       {inDayList && l.status === "finalizada" && l.has_exit === false && (
         <button
           type="button"
@@ -596,12 +611,7 @@ function DtSwapDialog({
           </pre>
         </div>
 
-        <DialogFooter className="flex-wrap gap-2">
-          <span className="mr-auto text-sm text-muted-foreground">
-            {mailSent
-              ? `E-mail enviado? Confirmar a troca para ${swap.newDt}`
-              : "Abra o e-mail primeiro. A troca só é efetivada depois que você confirmar."}
-          </span>
+        <DialogFooter className="flex-wrap gap-2 justify-end">
           <Button variant="outline" onClick={copiar} disabled={busy}>
             <Copy className="mr-1 h-4 w-4" /> Copiar mensagem
           </Button>
