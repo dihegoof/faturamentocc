@@ -322,7 +322,7 @@ function Faturamento() {
               Pendências — verificar ({applyFilters(pendings, filters, today).length})
             </h2>
             <p className="mb-3 text-sm text-muted-foreground">
-              Cargas que viraram o dia sem finalizar. Confira o que aconteceu e finalize.
+              Cargas aguardando confirmação de status:
             </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
               {applyFilters(pendings, filters, today).map((l) => (
