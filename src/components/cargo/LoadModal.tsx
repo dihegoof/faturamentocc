@@ -92,7 +92,8 @@ export function LoadModal({
                     : cleanDestination(load.destination)}
                 </span>
                 <div className="ml-auto flex gap-2">
-                  {fat && (
+                  {/* Solicitar CT-e é ação de "Impressa ag. CT-e" — antes disso não faz sentido. */}
+                  {fat && load.status === "impressa" && (
                     <Button size="sm" variant="outline" onClick={() => setCteOpen(true)}>
                       <Mail className="h-4 w-4" /> CT-e
                     </Button>
