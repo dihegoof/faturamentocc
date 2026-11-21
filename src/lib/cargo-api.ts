@@ -641,3 +641,30 @@ export async function setImportRecipient(id: string, gets: boolean) {
   const { error } = await supabase.from("cte_contacts").update({ gets_import: gets }).eq("id", id);
   if (error) throw error;
 }
+
+/* ------------------------------------------------------------------ */
+/* DT da carga MB                                                      */
+/* ------------------------------------------------------------------ */
+
+/** Carga MB que entrou sem DT (o Faturamento informa na primeira abertura). */
+export async function fetchMbSemDt() {
+  const { data, error } = await supabase
+    .from("cargo_loads")
+    .select("id, load_date, load_number, plate, carrier, pallets")
+    .eq("source", "MB")
+    .is("dt", null)
+    .is("deleted_at", null)
+    .order("load_date");
+  if (error) throw error;
+  return data;
+}
+
+/** Informa o DT de uma carga MB. Só funciona se ela ainda estiver sem DT. */
+export async function setMbDt(loadId: string, dt: string, by: string) {
+  const { error } = await supabase.rpc("set_mb_dt", {
+    p_load_id: loadId,
+    p_dt: dt,
+    p_by: by,
+  });
+  if (error) throw error;
+}

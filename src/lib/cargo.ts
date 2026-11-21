@@ -93,6 +93,8 @@ export interface CargoLoad {
   erro_virada_at?: string | null;
   erro_virada_motivo?: string | null;
   remessa_confirmed_at?: string | null;
+  dt_filled_at?: string | null;
+  dt_filled_by?: string | null;
   liquidated_at?: string | null;
   liquidated_by?: string | null;
   liquidation_export_id?: string | null;
@@ -1152,4 +1154,14 @@ export function buildImportEmail(
     ...(linhas.length ? linhas : ["- (nenhuma carga)"]),
   ].join("\n");
   return { subject, body };
+}
+
+/**
+ * Carga MB que ainda está sem DT. O Faturamento informa o DT na primeira
+ * vez que abre a carga — a Remessa importou sem, porque o DT é nosso.
+ */
+export function needsMbDt(
+  l: Pick<CargoLoad, "source" | "dt" | "dt_filled_at">,
+): boolean {
+  return l.source === "MB" && !l.dt && !l.dt_filled_at;
 }

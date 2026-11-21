@@ -600,7 +600,7 @@ function DtSwapDialog({
           <span className="mr-auto text-sm text-muted-foreground">
             {mailSent
               ? `E-mail enviado? Confirmar a troca para ${swap.newDt}`
-              : "Abra o e-mail primeiro. A troca só é efetivada depois que você confirmar."}
+              : ""}
           </span>
           <Button variant="outline" onClick={copiar} disabled={busy}>
             <Copy className="mr-1 h-4 w-4" /> Copiar mensagem
