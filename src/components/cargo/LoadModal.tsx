@@ -487,7 +487,6 @@ function StatusSection({ load, onDone }: { load: CargoLoad; onDone: () => void }
               {(load.has_exit === true) === v && <Check className="mr-1 inline h-4 w-4" />}{l}
             </button>
           ))}
-          <span className="text-xs text-muted-foreground">Só “com saída” entra na liquidação.</span>
         </div>
       )}
       {errorMode && (
