@@ -15,7 +15,6 @@ export function AgendaSyncToggle({ me }: { me?: string }) {
 
   const { data = [] } = useQuery({ queryKey: ["app-settings"], queryFn: fetchSettings });
   const on = data.find((s) => s.key === "agenda_sync")?.value === "on";
-  const alerta = data.find((s) => s.key === "pallet_alert")?.value === "on";
 
   const toggle = useMutation({
     mutationFn: (v: { key: string; value: string }) => setSetting(v.key, v.value, me),
@@ -48,25 +47,18 @@ export function AgendaSyncToggle({ me }: { me?: string }) {
         <span>
           <strong>Sincronização da Agenda</strong>
           <span className="block text-muted-foreground">
-            Caso esta opção esteja marcada, as cargas dependem de sincronização com agenda.
+            Ligada: o Faturamento sobe a agenda e as cargas ficam aguardando a Remessa
+            confirmar placa e transportadora. Desligada: o app funciona como antes, com a
+            Remessa importando e criando as cargas.
           </span>
         </span>
       </label>
 
-      <label className="mt-3 flex items-start gap-2 text-sm">
-        <Checkbox
-          checked={alerta}
-          disabled={busy}
-          onCheckedChange={(v) => void change("pallet_alert", v === true ? "on" : "off")}
-        />
-        <span>
-          <strong>Aviso de pallets por placa</strong>
-          <span className="block text-muted-foreground">
-            Avisa a Remessa e o Faturamento quando a carga passa do maior valor que a placa
-            já levou. Só avisa, não bloqueia.
-          </span>
-        </span>
-      </label>
+      <p className="mt-3 text-sm text-muted-foreground">
+        <strong>Aviso de pallets por placa:</strong> automático. Avisa a Remessa e o Faturamento
+        quando a carga passa do maior valor que a placa já levou — é uma segurança contra
+        divergência e não pode ser desligado.
+      </p>
     </section>
   );
 }

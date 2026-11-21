@@ -19,7 +19,7 @@ export const STATUSES: { key: CargoStatus; label: string; tone: string }[] = [
 
 export const statusLabel = (s: string) => STATUSES.find((x) => x.key === s)?.label ?? s;
 
-export const CORTE_REASONS = ["Falta de saldo de produto", "Dados divergêntes"];
+export const CORTE_REASONS = ["Corte", "Aguardando valor no sistema", "Carga com erro"];
 
 /** Card background tone per status; finalizada splits by whether the truck left. */
 export function cardTone(load: Pick<CargoLoad, "status" | "has_exit">): string {
@@ -86,6 +86,7 @@ export interface CargoLoad {
   delete_reason?: string | null;
   erro_virada_at?: string | null;
   erro_virada_motivo?: string | null;
+  remessa_confirmed_at?: string | null;
   liquidated_at?: string | null;
   liquidated_by?: string | null;
   liquidation_export_id?: string | null;
@@ -602,9 +603,55 @@ export function cteRecipients(
   loadCarrier: string | null | undefined,
 ) {
   return {
-    to: contacts.filter((c) => c.kind === "to_fixed" || (c.kind === "carrier" && carrierMatches(c.carrier, loadCarrier))).map((c) => c.email),
+    /** "Torre": a lista fixa mais os e-mails da transportadora da carga. */
+    to: contacts
+      .filter(
+        (c) =>
+          c.kind === "to_fixed" ||
+          (c.kind === "carrier" && carrierMatches(c.carrier, loadCarrier)),
+      )
+      .map((c) => c.email),
     cc: contacts.filter((c) => c.kind === "cc_fixed").map((c) => c.email),
   };
+}
+
+/** Nomes de exibição das duas listas fixas de e-mail. */
+export const FIXED_GROUP_LABEL: Record<string, string> = {
+  to_fixed: "Torre",
+  cc_fixed: "Cópia",
+};
+
+/* ------------------------------------------------------------------ */
+/* Importação pela Remessa: datas e pendência                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A carga aparece em "Cargas de hoje" quando a REMESSA a importou hoje,
+ * mesmo que ela tenha entrado pela agenda há dias. O que decide é a
+ * confirmação da Remessa, não a data prevista.
+ */
+export function showsInToday(
+  l: Pick<CargoLoad, "load_date" | "status" | "created_at" | "remessa_confirmed_at">,
+  today = todayISO(),
+): boolean {
+  // Ainda aguardando a Remessa nunca entra em "Cargas de hoje".
+  if (isAgendaLocked(l)) return false;
+  const confirmada = !!l.remessa_confirmed_at
+    ? localDay(l.remessa_confirmed_at) === today
+    : localDay(l.created_at) === today;
+  return confirmada || l.load_date === today;
+}
+
+/**
+ * O filtro "ocultar cargas futuras" esconde tudo que ainda não entrou
+ * na operação: carga de dia futuro E carga aguardando a Remessa, mesmo
+ * que o dia dela já tenha passado.
+ */
+export function hiddenByFutureFilter(
+  l: Pick<CargoLoad, "status" | "load_date">,
+  today = todayISO(),
+): boolean {
+  return isFutureLoad(l, today) || isAgendaLocked(l);
 }
 
 /* ------------------------------------------------------------------ */
@@ -698,7 +745,7 @@ export function buildDtSwapEmail(
 ): { subject: string; body: string } {
   const carrier = (swap.carrier ?? "").trim();
   const subject = `Troca de DT: ${swap.newDt} | ${carrier.toUpperCase()}`;
-  const motivo = (swap.motivo ?? "").trim() || "divergência de faturamento";
+  const motivo = (swap.motivo ?? "").trim() || "faturamento inverter SKU";
   // A 2ª linha cita só o e-mail selecionado — sem mailto:, que o Outlook
   // já transforma em link e ficava aparecendo duplicado.
   const carrierMention = `<${swap.mention?.trim() || carrier}>`;
@@ -1015,7 +1062,7 @@ export function applyFilters<
 >(loads: T[], filters: ListFilters, today = todayISO()): T[] {
   return loads.filter((l) => {
     if (filters.hideFinalized && l.status === "finalizada") return false;
-    if (filters.hideFuture && (isFutureLoad(l, today) || isAgendaLocked(l))) return false;
+    if (filters.hideFuture && hiddenByFutureFilter(l, today)) return false;
     return true;
   });
 }
@@ -1070,6 +1117,13 @@ export function liquidationLabel(c: LiquidationCriteria): string {
  * E-mail que a Remessa dispara ao formalizar a importação:
  * um resumo simples e organizado das cargas que acabaram de entrar.
  */
+/** E-mails das contas do faturamento: destino padrão do e-mail de importação. */
+export function faturamentoEmails(
+  contacts: { kind: string; email: string }[],
+): string[] {
+  return contacts.filter((c) => c.kind === "to_fixed").map((c) => c.email);
+}
+
 export function buildImportEmail(
   loads: Pick<CargoLoad, "load_number" | "dt" | "plate" | "carrier" | "destination" | "pallets">[],
 ): { subject: string; body: string } {

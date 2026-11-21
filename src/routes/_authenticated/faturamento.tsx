@@ -43,6 +43,7 @@ import {
   isOverdue,
   lockReason,
   NO_FILTERS,
+  showsInToday,
   sortByReadiness,
   type ListFilters,
   matchesSearch,
@@ -108,7 +109,7 @@ function Faturamento() {
 
   /** Cargas de hoje: pela data prevista da carga, não pela data de importação. */
   const todays = useMemo(
-    () => sortByReadiness(range.filter((l) => l.load_date === today && !isAgendaLocked(l)), today),
+    () => sortByReadiness(range.filter((l) => showsInToday(l, today)), today),
     [range, today],
   );
   /** De hoje, mas a Remessa ainda não importou: vão para o fim da lista. */
@@ -300,7 +301,7 @@ function Faturamento() {
               Pendências — verificar ({pendings.length})
             </h2>
             <p className="mb-3 text-sm text-muted-foreground">
-             Cargas pendentes devido status indefinido:
+              Cargas que viraram o dia sem finalizar. Confira o que aconteceu e finalize.
             </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
               {pendings.map((l) => <div key={l.id}>{tile(l)}</div>)}
@@ -569,8 +570,8 @@ function DtSwapDialog({
         <DialogFooter className="flex-wrap gap-2">
           <span className="mr-auto text-sm text-muted-foreground">
             {mailSent
-              ? `Efetivar alteração para ${swap.newDt}`
-              : "Alteração será concretizada após o envio do email!"}
+              ? `E-mail enviado? Confirmar a troca para ${swap.newDt}`
+              : "Abra o e-mail primeiro. A troca só é efetivada depois que você confirmar."}
           </span>
           <Button variant="outline" onClick={copiar} disabled={busy}>
             <Copy className="mr-1 h-4 w-4" /> Copiar mensagem

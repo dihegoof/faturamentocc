@@ -628,3 +628,16 @@ export async function fetchPendentesLiquidacao(): Promise<CargoLoad[]> {
   if (error) throw error;
   return data as CargoLoad[];
 }
+
+/** Contas do faturamento que recebem o e-mail de importação. */
+export async function importEmails(): Promise<string[]> {
+  const { data, error } = await supabase.rpc("import_emails");
+  if (error) throw error;
+  return (data ?? []) as string[];
+}
+
+/** Marca/desmarca um contato fixo como destino do e-mail de importação. */
+export async function setImportRecipient(id: string, gets: boolean) {
+  const { error } = await supabase.from("cte_contacts").update({ gets_import: gets }).eq("id", id);
+  if (error) throw error;
+}

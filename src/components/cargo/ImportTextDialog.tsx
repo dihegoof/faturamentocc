@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { buildImportEmail, checkBoxes, diffAgendaProducts, fmtNum, parseCargoText, formatPlateLine, mailtoHref, type ParsedLoad } from "@/lib/cargo";
-import { agendaSyncOn, confirmFromRemessa, fetchCatalog, importLoads, matchAgendaByDt, platePalletAlert } from "@/lib/cargo-api";
+import { agendaSyncOn, confirmFromRemessa, fetchCatalog, importEmails, importLoads, matchAgendaByDt, platePalletAlert } from "@/lib/cargo-api";
 import { supabase } from "@/integrations/supabase/client";
 
 export function ImportTextDialog({
@@ -99,9 +99,11 @@ export function ImportTextDialog({
     );
   };
 
-  /** Abre o Outlook com o resumo das cargas importadas. */
-  const abrirEmail = (loads: ParsedLoad[]) => {
+  /** Abre o Outlook com o resumo das cargas importadas.
+   *  O "Para" vem automático das contas do faturamento (fixadas no Painel). */
+  const abrirEmail = async (loads: ParsedLoad[]) => {
     if (!loads.length) return;
+    const destinatarios = await importEmails().catch(() => []);
     const { subject, body } = buildImportEmail(
       loads.map((l) => ({
         load_number: l.load_number,
@@ -112,7 +114,7 @@ export function ImportTextDialog({
         pallets: l.pallets,
       })),
     );
-    window.location.href = mailtoHref([], [], subject, body);
+    window.location.href = mailtoHref(destinatarios, [], subject, body);
   };
 
   const save = async () => {
@@ -141,7 +143,7 @@ export function ImportTextDialog({
           `${confirmed} carga(s) confirmada(s) na agenda${created ? ` · ${created} criada(s) fora da agenda` : ""}`,
         );
         qc.invalidateQueries({ queryKey: ["loads"] });
-        abrirEmail(review);
+        await abrirEmail(review);
         setText("");
         setReview(null);
         onOpenChange(false);
@@ -156,7 +158,7 @@ export function ImportTextDialog({
         `${inserted} carga(s) importada(s) como Pendente${skipped.length ? ` · ${skipped.length} duplicada(s) ignorada(s)` : ""}`,
       );
       qc.invalidateQueries({ queryKey: ["loads"] });
-      abrirEmail(review.filter((l) => !l.duplicate));
+      await abrirEmail(review.filter((l) => !l.duplicate));
       setText("");
       setReview(null);
       onOpenChange(false);

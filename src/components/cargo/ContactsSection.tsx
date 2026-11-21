@@ -4,7 +4,8 @@ import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { deleteContact, fetchContacts, saveContact, type ContactKind } from "@/lib/cargo-api";
+import { deleteContact, fetchContacts, saveContact, setImportRecipient, type ContactKind } from "@/lib/cargo-api";
+import { cn } from "@/lib/utils";
 
 /** E-mails usados na solicitação de CT-e manual: Para fixo, cópia fixa e por transportadora. */
 export function ContactsSection() {
@@ -38,7 +39,7 @@ export function ContactsSection() {
       <div className="flex flex-wrap gap-2">
         <select value={kind} onChange={(e) => setKind(e.target.value as ContactKind)} className="h-9 rounded-md border bg-background px-2 text-sm">
           <option value="carrier">Transportadora</option>
-          <option value="to_fixed">Para (fixo)</option>
+          <option value="to_fixed">Torre</option>
           <option value="cc_fixed">Cópia (fixo)</option>
         </select>
         {kind === "carrier" && <Input placeholder="Transportadora" value={carrier} onChange={(e) => setCarrier(e.target.value)} className="w-44" />}
@@ -55,7 +56,7 @@ export function ContactsSection() {
           onChange={(e) => setView(e.target.value)}
           className="h-9 rounded-md border bg-background px-2 text-sm"
         >
-          <option value="to_fixed">Para (fixo)</option>
+          <option value="to_fixed">Torre</option>
           <option value="cc_fixed">Cópia (fixo)</option>
           {carriers.map((c) => (
             <option key={c} value={c}>{c}</option>
@@ -74,6 +75,22 @@ export function ContactsSection() {
             {visible.map((c) => (
               <span key={c.id} className="flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs">
                 {c.email}
+                {c.kind !== "carrier" && (
+                  <button
+                    type="button"
+                    title={
+                      c.gets_import === false
+                        ? "Não recebe o e-mail de importação"
+                        : "Recebe o e-mail de importação"
+                    }
+                    aria-label="Alternar e-mail de importação"
+                    onClick={() => void run(() => setImportRecipient(c.id, c.gets_import === false))}
+                    className={cn("rounded px-1 text-[10px] font-semibold",
+                      c.gets_import === false ? "bg-muted-foreground/20 text-muted-foreground" : "bg-emerald-200 text-emerald-900")}
+                  >
+                    imp
+                  </button>
+                )}
                 <button type="button" aria-label={`Remover ${c.email}`} onClick={() => void run(() => deleteContact(c.id))}>
                   <X className="h-3 w-3" />
                 </button>

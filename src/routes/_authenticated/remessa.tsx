@@ -11,7 +11,7 @@ import { ImportTextDialog } from "@/components/cargo/ImportTextDialog";
 import { ImportMBDialog } from "@/components/cargo/ImportMBDialog";
 import { Button } from "@/components/ui/button";
 import { useLoadsRange, useNow } from "@/hooks/use-loads";
-import { applyFilters, countsTime, isAgendaLocked, isFutureLoad, lockReason, matchesSearch, NO_FILTERS, sortByReadiness, todayISO, type CargoLoad, type ListFilters } from "@/lib/cargo";
+import { applyFilters, countsTime, isAgendaLocked, isFutureLoad, lockReason, matchesSearch, NO_FILTERS, showsInToday, sortByReadiness, todayISO, type CargoLoad, type ListFilters } from "@/lib/cargo";
 import { cn } from "@/lib/utils";
 import { ListFilter } from "@/components/cargo/ListFilter";
 
@@ -57,7 +57,7 @@ function Remessa() {
   const searching = !!q.trim();
   /** Cargas de hoje prontas para faturar: no topo da lista. */
   const todays = sortByReadiness(
-    range.filter((l) => l.load_date === today && !isAgendaLocked(l)),
+    range.filter((l) => showsInToday(l, today)),
     today,
   );
   /** De hoje e ainda aguardando a Remessa: descem para o fim. */
