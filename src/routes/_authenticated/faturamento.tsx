@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { PlateHistory } from "@/components/cargo/PlateHistory";
 import { AgendaImportDialog } from "@/components/cargo/AgendaImportDialog";
 import { ListFilter } from "@/components/cargo/ListFilter";
+import { AwaitingButton, AwaitingDialog } from "@/components/cargo/AwaitingDialog";
 import { LiquidationDialog } from "@/components/cargo/LiquidationDialog";
 import { LiquidationPending } from "@/components/cargo/LiquidationPending";
 import { useLoadLocks, useLoadsRange, useNow, useUpdateLoad } from "@/hooks/use-loads";
@@ -87,6 +88,7 @@ function Faturamento() {
   const [cteFrom, setCteFrom] = useState("");
   const [agendaOpen, setAgendaOpen] = useState(false);
   const [liqOpen, setLiqOpen] = useState(false);
+  const [awaitingOpen, setAwaitingOpen] = useState(false);
   const meName = me?.display_name ?? me?.email ?? "Faturamento";
   /** Filtros do funil. */
   const [filters, setFilters] = useState<ListFilters>(NO_FILTERS);
@@ -114,6 +116,11 @@ function Faturamento() {
   );
   /** Previstas para depois de hoje. */
   const future = useMemo(() => range.filter((l) => isFutureLoad(l, today)), [range, today]);
+  /**
+   * Aguardando Remessa: NÃO aparece em lista nenhuma. Só pela busca por DT
+   * ou pelo botão de histórico (caderno).
+   */
+  const awaiting = useMemo(() => range.filter((l) => isAgendaLocked(l)), [range]);
   /** Cargas de dias anteriores que nunca foram finalizadas: pendência de checagem. */
   /**
    * Pendências do FATURAMENTO: só carga já sincronizada pela Remessa que
@@ -142,7 +149,7 @@ function Faturamento() {
   );
   /** Só o que entrou na operação: as aguardando Remessa vivem nas Pendências. */
   const visibleToday = useMemo(
-    () => applyFilters([...todays, ...future], filters, today),
+    () => applyFilters([...todays, ...future], filters, today).filter((l) => !isAgendaLocked(l)),
     [todays, future, filters, today],
   );
   const results = useMemo(
@@ -290,6 +297,7 @@ function Faturamento() {
                 {q.trim() ? `Resultados (${results.length})` : `Cargas de hoje (${visibleToday.length})`}
               </h2>
               {!q.trim() && <ListFilter filters={filters} onChange={setFilters} />}
+              <AwaitingButton loads={awaiting} onOpen={() => setAwaitingOpen(true)} />
             </div>
             {results.length ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
@@ -376,6 +384,12 @@ function Faturamento() {
           </div>
         )}
       </main>
+      <AwaitingDialog
+        open={awaitingOpen}
+        onOpenChange={setAwaitingOpen}
+        loads={awaiting}
+        now={now}
+      />
       <LiquidationDialog
         open={liqOpen}
         onOpenChange={setLiqOpen}
