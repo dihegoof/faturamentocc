@@ -6,8 +6,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { buildImportEmail, fmtNum, isValidPlate, importRecipients, mailtoHref, normalizePlate, palletsFor, todayISO } from "@/lib/cargo";
-import { fetchCatalog, fetchClients, fetchContacts, importLoads } from "@/lib/cargo-api";
+import { fmtNum, isValidPlate, normalizePlate, palletsFor, todayISO } from "@/lib/cargo";
+import { fetchCatalog, fetchClients, importLoads } from "@/lib/cargo-api";
 
 type Row = { code: string; boxes: string };
 
@@ -20,8 +20,6 @@ export function ImportMBDialog({ open, onOpenChange }: { open: boolean; onOpenCh
   const { data: catalog = [] } = useQuery({ queryKey: ["catalog"], queryFn: fetchCatalog, enabled: open });
   /** Clientes do cadastro, para a Remessa escolher o destino. */
   const { data: clientes = [] } = useQuery({ queryKey: ["clients"], queryFn: fetchClients, enabled: open });
-  /** Contatos com o "imp" ligado (Faturamento) e a cópia fixa (conferentes). */
-  const { data: contacts = [] } = useQuery({ queryKey: ["contacts"], queryFn: fetchContacts, enabled: open });
 
   const empty = { load_number: "", plate: "", carrier: "", destination: "", load_date: todayISO() };
   const [form, setForm] = useState(empty);
@@ -59,32 +57,6 @@ export function ImportMBDialog({ open, onOpenChange }: { open: boolean; onOpenCh
       if (inserted) {
         toast.success("Carga MB importada — o Faturamento informa o DT");
         qc.invalidateQueries({ queryKey: ["loads"] });
-        // E-mail de importação: Faturamento no Para, conferentes em Cópia.
-        const { to, cc } = importRecipients(contacts);
-        const mail = buildImportEmail([{
-          load_date: form.load_date,
-          load_number: form.load_number,
-          origin: ORIGIN,
-          destination: destino?.name ?? form.destination,
-          destination_code: destino?.center_code ?? "",
-          carrier: form.carrier,
-          plate: normalizePlate(form.plate),
-          dt: "",
-          pallets: totalPallets,
-          products: valid.map((l) => ({
-            code: l.product!.code,
-            description: l.product!.short_name || l.product!.description,
-            boxes: l.boxes,
-            pallets: l.pallets,
-            sap_code: l.product!.sap_code || l.product!.code,
-          })),
-          warnings: [],
-        }]);
-        if (!to.length) {
-          toast.warning('Nenhum e-mail do Faturamento marcado com "imp" — cadastre no Painel.');
-        } else {
-          window.location.href = mailtoHref(to, cc, mail.subject, mail.body);
-        }
         setForm(empty); setRows([{ code: "", boxes: "" }]); onOpenChange(false);
       }
     } catch (e) {

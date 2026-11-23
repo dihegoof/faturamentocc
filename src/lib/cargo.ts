@@ -81,8 +81,6 @@ export interface ParsedProduct {
   pallets?: number;
   /** Linha exata colada pela Remessa, guardada para o e-mail de importação. */
   raw_line?: string;
-  /** ID do produto no cadastro (SAP quando houver), para o e-mail. */
-  sap_code?: string;
 }
 
 export interface ParsedLoad {
@@ -319,7 +317,6 @@ export function parseCargoText(
         code: row.code || "",
         description: row.description || "",
         boxes: num(row.boxes || "0"),
-        sap_code: (row.code || "").trim(),
         // Linha original, para o e-mail de importação.
         raw_line: (lines[i] ?? "").trim(),
       });
@@ -426,7 +423,6 @@ export function parsePositionalRows(lines: string[], fallbackDate = todayISO()):
       description,
       boxes: num(boxes),
       pallets: num(pallets),
-      sap_code: code.trim(),
       // Linha original, para o e-mail de importação.
       raw_line: line.trim(),
     });
@@ -489,36 +485,22 @@ export function buildCteEmail(
  * Cada produto de cada carga vira UMA linha, com o texto exatamente como a
  * Remessa colou e as caixas já corrigidas pelo catálogo.
  */
-export function buildImportEmail(loads: ParsedLoad[]) {
+export function buildImportEmail(loads: ParsedLoad[], greeting = new Date().getHours() < 12 ? "Bom dia" : "Boa tarde") {
   const subject = "Carregamento";
-  const body: string[] = ["Segue dados para faturamento:", ""];
-  /** Data no formato da planilha: 23/11/2026. */
-  const brDate = (iso: string) => {
-    const [y, m, d] = (iso || "").split("-");
-    return d && m && y ? `${d}/${m}/${y}` : iso || "—";
-  };
+  const body: string[] = [greeting + ",", "", "Segue o carregamento importado pela Remessa:", ""];
   for (const l of loads) {
-    // Uma linha por produto, no mesmo formato da planilha colada:
-    // data, carga, origem, sigla destino, destino, código, descrição,
-    // caixas, pallets, transportadora, placa, DT.
+    body.push(`Carga ${l.load_number}${l.plate ? ` · ${normalizePlate(l.plate)}` : ""}`, "");
     for (const p of l.products) {
-      body.push(
-        [
-          brDate(l.load_date),
-          l.load_number,
-          l.origin || "—",
-          l.destination_code || "—",
-          l.destination || "—",
-          p.sap_code || p.code || "—",
-          p.description || "—",
-          fmtNum(p.boxes),
-          fmtNum(p.pallets ?? 0),
-          l.carrier || "—",
-          normalizePlate(l.plate || "") || "—",
-          l.dt || "—",
-        ].join("\t"),
-      );
+      // A linha colada, com só as caixas ajustadas.
+      const raw = p.raw_line && p.raw_line.trim()
+        ? p.raw_line.replace(/\t/g, " | ").trim()
+        : [l.load_number, l.origin, l.destination_code, l.destination, p.code, p.description, String(p.boxes)].join(" | ");
+      const typed = raw.match(/(\d[\d.]*)\s*(cx|caixas)?\s*$/i);
+      body.push(typed && Number(typed[1].replace(/\./g, "")) !== p.boxes
+        ? raw.replace(/(\d[\d.]*)(\s*(?:cx|caixas)?\s*)$/i, String(p.boxes) + "$2")
+        : raw);
     }
+    body.push("");
   }
   return { subject, body: body.join("\n").trimEnd() };
 }
