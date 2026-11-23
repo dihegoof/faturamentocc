@@ -59,13 +59,19 @@ export function MbDtDialog({
   };
 
   return (
-    <Dialog open={!!load} onOpenChange={(o) => { if (!o) onClose(); }}>
+    /*
+      modal={false}: o Radix, no modo modal, marca o resto da pagina como
+      aria-hidden e "bloqueia" os outros dialogs. Como o card da carga fica
+      aberto embaixo, isso derrubava o card junto. Fora do modo modal, os dois
+      convivem e o overlay proprio abaixo escurece o fundo.
+    */
+    <Dialog modal={false} open={!!load} onOpenChange={(o) => { if (!o) onClose(); }}>
       {/*
         Montado à mão com Portal + Overlay em z-[300]: o DialogContent do
         projeto fixa z-50 e não aceita classe no overlay, então por ele o
         mini modal abria atrás do card da carga.
       */}
-      <DialogPortal>
+      <DialogPortal container={typeof document !== "undefined" ? document.body : undefined}>
         <DialogOverlay className="z-[300]" />
         <DialogPrimitive.Content
           /*
