@@ -505,6 +505,14 @@ export function buildImportEmail(loads: ParsedLoad[], greeting = new Date().getH
   return { subject, body: body.join("\n").trimEnd() };
 }
 
+/** Monta o link mailto com To/Cc/subject/body já codificados. */
+export function mailtoHref(to: string[], cc: string[], subject: string, body: string): string {
+  const q = (v: string) => encodeURIComponent(v);
+  const dest = to.filter(Boolean).join(";");
+  const parts = [`cc=${q(cc.filter(Boolean).join(";"))}`, `subject=${q(subject)}`, `body=${q(body)}`];
+  return `mailto:${dest}?${parts.join("&")}`;
+}
+
 /** NF / ordem lists are stored as comma-separated text. */
 export const splitList = (v: string | null | undefined) =>
   (v ?? "").split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean);
