@@ -21,6 +21,11 @@ import { useLoadLocks, useLoadsRange, useNow, useUpdateLoad } from "@/hooks/use-
 import { getCurrentUser } from "@/lib/auth";
 import { agendaSyncOn, fetchClients, fetchContacts } from "@/lib/cargo-api";
 import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   buildCteEmail,
   buildDtSwapEmail,
