@@ -489,36 +489,28 @@ export function buildCteEmail(
  * Cada produto de cada carga vira UMA linha, com o texto exatamente como a
  * Remessa colou e as caixas já corrigidas pelo catálogo.
  */
-export function buildImportEmail(loads: ParsedLoad[]) {
+export function buildImportEmail(loads: ParsedLoad[], greeting = new Date().getHours() < 12 ? "Bom dia" : "Boa tarde") {
   const subject = "Carregamento";
-  const body: string[] = ["Segue dados para faturamento:", ""];
-  /** Data no formato da planilha: 23/11/2026. */
-  const brDate = (iso: string) => {
-    const [y, m, d] = (iso || "").split("-");
-    return d && m && y ? `${d}/${m}/${y}` : iso || "—";
-  };
+  const body: string[] = [greeting + ",", "", "Segue o carregamento importado pela Remessa:", ""];
   for (const l of loads) {
-    // Uma linha por produto, no mesmo formato da planilha colada:
-    // data, carga, origem, sigla destino, destino, código, descrição,
-    // caixas, pallets, transportadora, placa, DT.
+    // Cabeçalho da carga: id, origem/destino, DT, placa e transportadora.
+    body.push(
+      [
+        `ID carga: ${l.load_number}`,
+        `Origem: ${l.origin || "—"}`,
+        `Destino: ${[l.destination_code, l.destination].filter(Boolean).join(" ") || "—"}`,
+        `DT: ${l.dt || "—"}`,
+        `Placa: ${normalizePlate(l.plate || "") || "—"}`,
+        `Transportadora: ${l.carrier || "—"}`,
+      ].join(" | "),
+      "",
+    );
+    // Uma linha por produto: id do produto, descrição e caixas (já corrigidas).
     for (const p of l.products) {
-      body.push(
-        [
-          brDate(l.load_date),
-          l.load_number,
-          l.origin || "—",
-          l.destination_code || "—",
-          l.destination || "—",
-          p.sap_code || p.code || "—",
-          p.description || "—",
-          fmtNum(p.boxes),
-          fmtNum(p.pallets ?? 0),
-          l.carrier || "—",
-          normalizePlate(l.plate || "") || "—",
-          l.dt || "—",
-        ].join("\t"),
-      );
+      const id = p.sap_code || p.code || "—";
+      body.push(`${id} | ${p.description || "—"} | ${p.boxes} cx`);
     }
+    body.push("");
   }
   return { subject, body: body.join("\n").trimEnd() };
 }
