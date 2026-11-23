@@ -79,10 +79,6 @@ export interface ParsedProduct {
   description: string;
   boxes: number;
   pallets?: number;
-  /** Linha exata colada pela Remessa, guardada para o e-mail de importação. */
-  raw_line?: string;
-  /** ID do produto no cadastro (SAP quando houver), para o e-mail. */
-  sap_code?: string;
 }
 
 export interface ParsedLoad {
@@ -319,9 +315,6 @@ export function parseCargoText(
         code: row.code || "",
         description: row.description || "",
         boxes: num(row.boxes || "0"),
-        sap_code: (row.code || "").trim(),
-        // Linha original, para o e-mail de importação.
-        raw_line: (lines[i] ?? "").trim(),
       });
     }
   }
@@ -426,9 +419,6 @@ export function parsePositionalRows(lines: string[], fallbackDate = todayISO()):
       description,
       boxes: num(boxes),
       pallets: num(pallets),
-      sap_code: code.trim(),
-      // Linha original, para o e-mail de importação.
-      raw_line: line.trim(),
     });
     load.pallets += num(pallets);
   }
@@ -526,6 +516,7 @@ export function buildImportEmail(loads: ParsedLoad[]) {
 /** NF / ordem lists are stored as comma-separated text. */
 export const splitList = (v: string | null | undefined) =>
   (v ?? "").split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean);
+
 export const joinList = (xs: string[]) => (xs.length ? [...new Set(xs)].join(", ") : null);
 
 export interface CatalogProduct {
@@ -617,19 +608,141 @@ export function cteRecipients(
 ) {
   return {
     to: contacts.filter((c) => c.kind === "to_fixed" || (c.kind === "carrier" && carrierMatches(c.carrier, loadCarrier))).map((c) => c.email),
-    // Cópia: conferentes (cópia fixa) + faturamento (marcado com o "imp").
-    cc: contacts
-      .filter((c) => c.kind === "cc_fixed" || (c as { gets_import?: boolean }).gets_import === true)
-      .map((c) => c.email),
-  };
-}
-
-/** Para = só o faturamento (contatos marcados com o "imp"). */
-export function importRecipients(
-  contacts: { kind: string; email: string; carrier: string | null; gets_import?: boolean | null }[],
-) {
-  return {
-    to: contacts.filter((c) => c.gets_import === true).map((c) => c.email),
     cc: contacts.filter((c) => c.kind === "cc_fixed").map((c) => c.email),
   };
 }
+/* ------------------------------------------------------------------ */
+/* Filtros do funil e ordenação das listas                             */
+/* ------------------------------------------------------------------ */
+
+export type ListFilters = {
+  /** Esconde as cargas já finalizadas. */
+  hideFinished: boolean;
+  /** Esconde as cargas previstas para depois de hoje. */
+  hideFuture: boolean;
+};
+
+export const NO_FILTERS: ListFilters = { hideFinished: false, hideFuture: false };
+
+/** Cargas previstas para hoje (pela data prevista, não pela importação). */
+export const showsInToday = (l: Pick<CargoLoad, "load_date">, today: string) => l.load_date === today;
+
+/** Cargas previstas para depois de hoje. */
+export const isFutureLoad = (l: Pick<CargoLoad, "load_date">, today: string) => l.load_date > today;
+
+/** Ainda aguardando a Remessa: fora das listas principais. */
+export const isAgendaLocked = (l: Pick<CargoLoad, "plate" | "carrier">) => !l.plate && !l.carrier;
+
+/** Virou o dia sem "finalizada com saída": pendência de checagem. */
+export const isOverdue = (l: Pick<CargoLoad, "load_date" | "status" | "has_exit">, today: string) =>
+  l.load_date < today && !(l.status === "finalizada" && l.has_exit !== false);
+
+/** O cronômetro só faz sentido em carga do dia que ainda está em andamento. */
+export const countsTime = (l: Pick<CargoLoad, "load_date" | "status">, today: string) =>
+  l.load_date === today && l.status !== "finalizada";
+
+/** Motivo do card bloqueado, para o title. */
+export function lockReason(l: Pick<CargoLoad, "plate" | "carrier" | "load_date">, today: string): string | null {
+  if (isAgendaLocked(l)) return "Aguardando Remessa";
+  if (isFutureLoad(l, today)) return "Carga futura";
+  return null;
+}
+
+/** Aplica os filtros do funil. */
+export function applyFilters<T extends Pick<CargoLoad, "load_date" | "status" | "has_exit">>(
+  loads: T[],
+  filters: ListFilters,
+  today: string,
+): T[] {
+  return loads.filter((l) => {
+    if (filters.hideFinished && l.status === "finalizada") return false;
+    if (filters.hideFuture && isFutureLoad(l, today)) return false;
+    return true;
+  });
+}
+
+/** Ordena: prontas primeiro, aguardando Remessa por último. */
+export function sortByReadiness<T extends Pick<CargoLoad, "plate" | "carrier" | "status" | "load_date">>(
+  loads: T[],
+  today: string,
+): T[] {
+  const rank = (l: T) => {
+    if (isAgendaLocked(l)) return 3;
+    if (l.status === "finalizada") return 1;
+    if (isFutureLoad(l, today)) return 2;
+    return 0;
+  };
+  return [...loads].sort((a, b) => {
+    const d = rank(a) - rank(b);
+    if (d) return d;
+    return a.load_date === b.load_date ? 0 : a.load_date < b.load_date ? 1 : -1;
+  });
+}
+
+/** Carga MB que veio sem DT: o mini modal dispara na primeira abertura. */
+export const needsMbDt = (l: Pick<CargoLoad, "source" | "dt">, ) =>
+  (l.source ?? "").toUpperCase() === "MB" && !(l.dt ?? "").trim();
+
+/** Link mailto com To/Cc/subject/body já codificados. */
+export function mailtoHref(to: string[], cc: string[], subject: string, body: string): string {
+  const q = (v: string) => encodeURIComponent(v);
+  const dest = to.filter(Boolean).join(";");
+  return `mailto:${dest}?cc=${q(cc.filter(Boolean).join(";"))}&subject=${q(subject)}&body=${q(body)}`;
+}
+
+/** E-mail da troca de DT: transportadora no Para, Torre e conferentes em Cópia. */
+export function buildDtSwapEmail({
+  oldDt, newDt, plate, carrier, mdfe, motivo, nfs, mention,
+}: {
+  oldDt: string; newDt: string; plate: string | null; carrier: string | null;
+  mdfe: boolean; motivo: string; nfs: string; mention: string;
+}) {
+  const p = normalizePlate(plate ?? "") || "—";
+  const subject = `Troca de DT - ${(carrier ?? "—").toUpperCase()} ${p}`;
+  const body = [
+    "Bom dia,",
+    "",
+    `Segue a troca de DT abaixo para ${carrier || "a transportadora"}${mention ? ` (${mention})` : ""}:`,
+    "",
+    `Placa: ${p}`,
+    `DT anterior: ${oldDt || "—"}`,
+    `DT novo: ${newDt}`,
+    `Notas fiscais: ${nfs || "—"}`,
+    `MDF-e: ${mdfe ? "Sim" : "Não"}`,
+    motivo ? `Motivo: ${motivo}` : "",
+    "",
+    "Por gentileza confirmar o recebimento.",
+  ].filter((x) => x !== "").join("\n");
+  return { subject, body };
+}
+
+/* ------------------------------------------------------------------ */
+/* CT-e em lote (seleção múltipla no Faturamento)                      */
+/* ------------------------------------------------------------------ */
+
+/** Todas as cargas da seleção precisam ser da mesma transportadora. */
+export function canSelectWith<T extends Pick<CargoLoad, "carrier">>(
+  load: T,
+  others: T[],
+  _today?: string,
+): boolean {
+  if (!others.length) return true;
+  const base = (others[0]?.carrier ?? "").trim().toUpperCase();
+  return (load.carrier ?? "").trim().toUpperCase() === base;
+}
+
+/** Antes de montar o e-mail: precisa haver carga, todas no status certo. */
+export function validateCteSelection<T extends Pick<CargoLoad, "status" | "carrier">>(
+  loads: T[],
+  _today?: string,
+): { ok: boolean; error?: string } {
+  if (!loads.length) return { ok: false, error: "Selecione ao menos uma carga" };
+  const wrong = loads.filter((l) => l.status !== "impressa");
+  if (wrong.length) return { ok: false, error: "Só cargas em \"Impressa ag. CT-e\" entram no e-mail" };
+  const carriers = new Set(loads.map((l) => (l.carrier ?? "").trim().toUpperCase()));
+  if (carriers.size > 1) return { ok: false, error: "Selecione cargas de uma só transportadora" };
+  return { ok: true };
+}
+
+/** Aguardando Remessa: mesma regra do bloqueio da agenda. */
+export const isAwaitingRemessa = (l: Pick<CargoLoad, "plate" | "carrier">) => isAgendaLocked(l);
