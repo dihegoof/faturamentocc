@@ -75,10 +75,8 @@ export function LoadModal({
   return (
     <>
       {/*
-        O card não pode se fechar nem bloquear o clique quando o mini modal de
-        DT abre por cima: as travas abaixo seguram o fechamento, e o
-        disableOutsidePointerEvents do Radix é desligado para o clique chegar
-        ao campo do mini modal (o overlay dele é o que escurece o fundo).
+        O card fica aberto até alguém pedir para fechar, e não pode bloquear o
+        clique do mini modal de DT que abre por cima dele.
       */}
       <Dialog open={!!load} onOpenChange={(o) => !o && onClose()} modal={false}>
         <DialogContent

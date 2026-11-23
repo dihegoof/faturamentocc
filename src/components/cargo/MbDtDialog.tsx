@@ -60,9 +60,8 @@ export function MbDtDialog({
       */}
       <DialogPortal>
         {/*
-          Escurece o fundo sem capturar clique: pointer-events-none deixa o
-          clique passar para o conteúdo do mini modal. Um overlay normal do
-          Radix bloquearia o campo de DT (era o que impedia de digitar).
+          Escurece o fundo sem capturar clique (pointer-events-none): um overlay
+          normal do Radix bloquearia o campo de DT e não daria para digitar.
         */}
         <div className="pointer-events-none fixed inset-0 z-[290] bg-black/60" aria-hidden="true" />
         <DialogPrimitive.Content
