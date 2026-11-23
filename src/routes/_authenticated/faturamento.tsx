@@ -21,19 +21,12 @@ import { useLoadLocks, useLoadsRange, useNow, useUpdateLoad } from "@/hooks/use-
 import { getCurrentUser } from "@/lib/auth";
 import { agendaSyncOn, fetchClients, fetchContacts } from "@/lib/cargo-api";
 import { cn } from "@/lib/utils";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea";
-import { DialogFooter } from "@/components/ui/dialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   buildCteEmail,
   buildDtSwapEmail,
   carrierMatches,
   cteRecipients,
   mailtoHref,
-  canSelectWith,
   downloadCSV,
   formatPlateLine,
   applyFilters,
@@ -53,7 +46,6 @@ import {
   minutesSince,
   statusLabel,
   todayISO,
-  validateCteSelection,
   type CargoLoad,
 } from "@/lib/cargo";
 
@@ -82,12 +74,6 @@ function Faturamento() {
   const { data: me } = useQuery({ queryKey: ["me-profile"], queryFn: getCurrentUser });
   const [openId, setOpenId] = useState<string | null>(null);
   const [q, setQ] = useState("");
-  /** Cargas marcadas no checkbox para entrar no mesmo e-mail de CT-e. */
-  const [selected, setSelected] = useState<string[]>([]);
-  /** Resultado do último "Solicitar CT-e": destinatários e assunto prontos. */
-  const [batch, setBatch] = useState<{ to: string[]; cc: string[]; carrier: string } | null>(null);
-  /** E-mail da transportadora escolhido no modal de CT-e. */
-  const [cteFrom, setCteFrom] = useState("");
   const [agendaOpen, setAgendaOpen] = useState(false);
   const [liqOpen, setLiqOpen] = useState(false);
   const [awaitingOpen, setAwaitingOpen] = useState(false);
@@ -138,19 +124,9 @@ function Faturamento() {
     ),
     [range, today],
   );
-  const selectedLoads = useMemo(
-    () => selected.map((id) => range.find((l) => l.id === id)).filter(Boolean) as CargoLoad[],
-    [selected, range],
-  );
   const carrierOf = (l: CargoLoad) =>
     l.carrier ?? clients.find((c) => c.center_code === (l.destination_code ?? "").toUpperCase())?.name ?? "";
 
-  /** E-mails cadastrados da transportadora das cargas marcadas.
-   *  Declarado DEPOIS de selectedLoads e carrierOf de propósito: usa os dois. */
-  const carrierEmails = useMemo(
-    () => contacts.filter((c) => c.kind === "carrier" && carrierMatches(c.carrier, carrierOf(selectedLoads[0] ?? ({} as CargoLoad)))),
-    [contacts, selectedLoads, clients],
-  );
   /** Só o que entrou na operação: as aguardando Remessa vivem nas Pendências. */
   const visibleToday = useMemo(
     () => applyFilters([...todays, ...future], filters, today).filter((l) => !isAgendaLocked(l)),
@@ -173,49 +149,6 @@ function Faturamento() {
     update(l, { has_exit: true }, "Saída registrada", "faturamento").catch((e: Error) => toast.error(e.message));
     toast.success(`${l.plate ?? `Carga ${l.load_number}`}: saída registrada`);
   };
-  const toggleSelect = (l: CargoLoad) => {
-    setSelected((prev) => {
-      if (prev.includes(l.id)) return prev.filter((id) => id !== l.id);
-      const others = selectedLoads.filter((s) => s.id !== l.id);
-      if (!canSelectWith(l, others, today)) {
-        toast.error("Só é possível juntar cargas da mesma transportadora");
-        return prev;
-      }
-      return [...prev, l.id];
-    });
-  };
-
-  const requestCte = () => {
-    const v = validateCteSelection(selectedLoads, today);
-    if (!v.ok) {
-      toast.error(v.error ?? "Seleção inválida");
-      return;
-    }
-    const carrier = carrierOf(selectedLoads[0]!);
-    const { to } = cteRecipients(contacts, carrier);
-    if (!to.length) {
-      toast.error(`Nenhum e-mail cadastrado para ${carrier || "esta transportadora"}`);
-      return;
-    }
-    setCteFrom("");
-    setBatch({ to, cc: [], carrier });
-  };
-
-  /** Monta o e-mail de CT-e com as escolhas do modal e abre no Outlook. */
-  const openCteMail = () => {
-    if (!batch) return;
-    const chosen = cteFrom ? [cteFrom] : carrierEmails.map((c) => c.email);
-    const to = [...chosen, ...batch.to.filter((e) => !chosen.includes(e))];
-    const { cc } = cteRecipients(contacts, batch.carrier);
-    const { subject, body } = buildCteEmail(
-      selectedLoads.map((l) => ({ carrier: carrierOf(l), plate: l.plate ?? "", dt: l.dt ?? "" })),
-      { carrier: batch.carrier, to },
-    );
-    window.location.href = mailtoHref(to, cc, subject, body);
-    setBatch(null);
-    setSelected([]);
-  };
-
   /**
    * `inDayList` diz se o card está na lista do dia. O caminhão (registrar
    * saída) e o checkbox de CT-e só aparecem lá — no histórico não fazem sentido.
@@ -237,21 +170,6 @@ function Faturamento() {
         aria-disabled={locked}
         title={lockReason(l, today) ?? undefined}
       />
-      {inDayList && l.status === "impressa" && importedToday(l, today) && (
-        <label
-          className="mt-1 flex shrink-0 cursor-pointer flex-col items-center gap-0.5 text-[10px] text-muted-foreground"
-          title="Marcar para solicitar CT-e em lote"
-        >
-          <input
-            type="checkbox"
-            className="h-4 w-4 accent-current"
-            checked={selected.includes(l.id)}
-            onChange={() => toggleSelect(l)}
-            aria-label={`Selecionar carga ${l.load_number} para CT-e`}
-          />
-          CT-e
-        </label>
-      )}
       {inDayList && l.status === "finalizada" && l.has_exit === false && (
         <button
           type="button"
@@ -344,60 +262,6 @@ function Faturamento() {
 
         {!q.trim() && (
           <HistoryStrip title="Histórico de cargas" items={historySorted} render={tile} today={today} selector />
-        )}
-        {selectedLoads.length > 0 && (
-          <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 p-3 backdrop-blur">
-            <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-3">
-              <span className="text-sm">
-                <strong>{selectedLoads.length}</strong> carga(s) · {carrierOf(selectedLoads[0]!) || "sem transportadora"}
-              </span>
-              <Button size="sm" onClick={requestCte}>
-                Solicitar CT-e
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setSelected([])}>
-                Limpar seleção
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {batch && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="max-h-[85vh] w-full max-w-2xl overflow-auto rounded-xl bg-card p-4 shadow-xl">
-              <h3 className="mb-2 font-display text-lg font-bold">E-mail de CT-e manual</h3>
-              <p className="mb-3 text-sm text-muted-foreground">
-                {selectedLoads.length} carga(s) · {batch.carrier || "sem transportadora"}
-              </p>
-
-              <div className="mb-3 grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label className="text-xs">Menção da transportadora <span className="text-destructive">*</span></Label>
-                  <select
-                    value={cteFrom}
-                    onChange={(e) => setCteFrom(e.target.value)}
-                    className="h-9 w-full rounded-md border bg-background px-2 text-sm"
-                  >
-                    <option value="">
-                      {carrierEmails.length ? "Todos da transportadora" : "Nenhum cadastrado"}
-                    </option>
-                    {carrierEmails.map((c) => (
-                      <option key={c.email} value={c.email}>{c.email}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <p className="mb-1 text-sm"><strong>Para:</strong> {(cteFrom ? [cteFrom] : batch.to).join("; ")}</p>
-              <p className="mb-4 text-sm text-muted-foreground">
-                Torre entra sempre no Para · pessoal fixo entra em Cópia
-              </p>
-
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setBatch(null)}>Cancelar</Button>
-                <Button onClick={openCteMail}>Abrir e-mail</Button>
-              </div>
-            </div>
-          </div>
         )}
       </main>
       <MbDtDialog

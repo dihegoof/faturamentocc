@@ -75,9 +75,10 @@ export function LoadModal({
   return (
     <>
       {/*
-        O card fica aberto até alguém pedir para fechar. Sem essas três travas,
-        o Radix avisa que o diálogo perdeu o foco quando o mini modal de DT abre
-        por cima, e o onOpenChange fechava o card (só o de DT continuava na tela).
+        O card não pode se fechar nem bloquear o clique quando o mini modal de
+        DT abre por cima: as travas abaixo seguram o fechamento, e o
+        disableOutsidePointerEvents do Radix é desligado para o clique chegar
+        ao campo do mini modal (o overlay dele é o que escurece o fundo).
       */}
       <Dialog open={!!load} onOpenChange={(o) => !o && onClose()} modal={false}>
         <DialogContent

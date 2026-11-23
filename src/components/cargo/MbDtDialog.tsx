@@ -59,6 +59,12 @@ export function MbDtDialog({
         mini modal abria atrás do card da carga.
       */}
       <DialogPortal>
+        {/*
+          Escurece o fundo sem capturar clique: pointer-events-none deixa o
+          clique passar para o conteúdo do mini modal. Um overlay normal do
+          Radix bloquearia o campo de DT (era o que impedia de digitar).
+        */}
+        <div className="pointer-events-none fixed inset-0 z-[290] bg-black/60" aria-hidden="true" />
         <DialogPrimitive.Content
           /*
             modal: o Radix prende o foco aqui dentro. Sem isso, clicar no
