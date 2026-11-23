@@ -2,14 +2,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AlertCircle } from "lucide-react";
-import {
-  Dialog,
-  DialogPortal,
-  DialogOverlay,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogPortal, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -59,20 +52,13 @@ export function MbDtDialog({
   };
 
   return (
-    /*
-      modal={false}: o Radix, no modo modal, marca o resto da pagina como
-      aria-hidden e "bloqueia" os outros dialogs. Como o card da carga fica
-      aberto embaixo, isso derrubava o card junto. Fora do modo modal, os dois
-      convivem e o overlay proprio abaixo escurece o fundo.
-    */
-    <Dialog modal={false} open={!!load} onOpenChange={(o) => { if (!o) onClose(); }}>
+    <Dialog open={!!load} onOpenChange={(o) => { if (!o) onClose(); }}>
       {/*
         Montado à mão com Portal + Overlay em z-[300]: o DialogContent do
         projeto fixa z-50 e não aceita classe no overlay, então por ele o
         mini modal abria atrás do card da carga.
       */}
-      <DialogPortal container={typeof document !== "undefined" ? document.body : undefined}>
-        <DialogOverlay className="z-[300]" />
+      <DialogPortal>
         <DialogPrimitive.Content
           /*
             modal: o Radix prende o foco aqui dentro. Sem isso, clicar no
