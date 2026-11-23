@@ -74,8 +74,18 @@ export function LoadModal({
 
   return (
     <>
-      <Dialog open={!!load} onOpenChange={(o) => !o && onClose()}>
-        <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
+      {/*
+        O card fica aberto até alguém pedir para fechar. Sem essas três travas,
+        o Radix avisa que o diálogo perdeu o foco quando o mini modal de DT abre
+        por cima, e o onOpenChange fechava o card (só o de DT continuava na tela).
+      */}
+      <Dialog open={!!load} onOpenChange={(o) => !o && onClose()} modal={false}>
+        <DialogContent
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+          onFocusOutside={(e) => e.preventDefault()}
+          className="max-h-[92vh] max-w-3xl overflow-y-auto"
+        >
           {load && (
             <>
               <DialogHeader>
