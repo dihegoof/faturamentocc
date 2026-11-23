@@ -75,15 +75,11 @@ export function LoadModal({
   return (
     <>
       {/*
-        O card fica aberto até alguém pedir para fechar, e não pode bloquear o
-        clique do mini modal de DT que abre por cima dele.
+        O card fica aberto até alguém pedir para fechar, e não bloqueia o clique
+        do mini modal de DT que abre por cima. Sem o modo modal, o Radix não
+        desenha o overlay dele — por isso a camada escura própria abaixo.
       */}
       <Dialog open={!!load} onOpenChange={(o) => !o && onClose()} modal={false}>
-        {/*
-          Sem o modo modal o Radix não desenha o overlay dele, então o fundo
-          fica claro. Esta camada escurece por conta própria e não captura
-          clique (pointer-events-none), para não travar o mini modal de DT.
-        */}
         {load && <div className="fixed inset-0 z-40 bg-black/60 pointer-events-none" aria-hidden="true" />}
         <DialogContent
           onOpenAutoFocus={(e) => e.preventDefault()}
@@ -121,7 +117,7 @@ export function LoadModal({
                     variant="outline"
                     className="text-destructive hover:text-destructive"
                     onClick={() => setDelOpen(true)}
-                    title="Excluir carga"
+                    title="Excluir carga (o admin pode restaurar)"
                   >
                     <Trash2 className="h-4 w-4" /> Excluir
                   </Button>
@@ -132,11 +128,10 @@ export function LoadModal({
                 <Field label="Placa">
                   <Correctable load={load} field="plate" editable={fat} />
                 </Field>
-                {fat && (
-                  <Field label="DT">
-                    <Correctable load={load} field="dt" editable={fat} onChanged={onDtChanged} />
-                  </Field>
-                )}
+                {/* A Remessa vê o DT para conferir e copiar; só o Faturamento edita. */}
+                <Field label="DT">
+                  <Correctable load={load} field="dt" editable={fat} onChanged={onDtChanged} />
+                </Field>
                 <Field label="Cód. cliente">
                   <CopyValue value={client?.customer_code} label="Código do cliente" />
                 </Field>
@@ -451,7 +446,6 @@ function StatusSection({ load, onDone }: { load: CargoLoad; onDone: () => void }
   const [other, setOther] = useState("");
 
   const setExit = (exit: boolean) => {
-    // Sai do modo erro: o painel de motivo sumiria junto com a troca de status.
     setErrorMode(false);
     setOther("");
     if (load.status === "finalizada" && load.has_exit === exit) return;
@@ -464,7 +458,6 @@ function StatusSection({ load, onDone }: { load: CargoLoad; onDone: () => void }
     if (c === "pendente") return; // não é uma escolha manual
     if (c === current && c !== "corte") return;
     if (c === "finalizada") return setExit(false);
-    // Escolheu outro status? O motivo de erro não faz mais sentido.
     if (c !== "corte") {
       setErrorMode(false);
       setOther("");

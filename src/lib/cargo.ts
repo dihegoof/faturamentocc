@@ -1,11 +1,4 @@
-export type CargoStatus =
-  | "pendente"
-  | "pendente_remessa"
-  | "faturado"
-  | "impressa"
-  | "corte"
-  | "finalizada"
-  | "erro_virada";
+export type CargoStatus = "pendente" | "faturado" | "impressa" | "corte" | "finalizada";
 
 export const STATUSES: { key: CargoStatus; label: string; tone: string }[] = [
   { key: "pendente", label: "Pendente", tone: "status-pendente" },
@@ -13,8 +6,6 @@ export const STATUSES: { key: CargoStatus; label: string; tone: string }[] = [
   { key: "impressa", label: "Impressa ag. CT-e", tone: "status-impressa" },
   { key: "corte", label: "Erro", tone: "status-corte" },
   { key: "finalizada", label: "Finalizada", tone: "status-finalizada" },
-  { key: "erro_virada", label: "Pendência", tone: "status-erro-virada" },
-  { key: "pendente_remessa", label: "Aguardando Remessa", tone: "status-pendente-remessa" },
 ];
 
 export const statusLabel = (s: string) => STATUSES.find((x) => x.key === s)?.label ?? s;
@@ -22,14 +13,8 @@ export const statusLabel = (s: string) => STATUSES.find((x) => x.key === s)?.lab
 export const CORTE_REASONS = ["Corte", "Aguardando valor no sistema", "Carga com erro"];
 
 /** Card background tone per status; finalizada splits by whether the truck left. */
-export function cardTone(
-  load: Pick<CargoLoad, "status" | "has_exit" | "liquidated_at">,
-): string {
-  // Liquidada e finalizada com saída compartilham a cor de conclusão.
-  if (load.liquidated_at) return "concluida";
-  if (load.status === "finalizada") {
-    return load.has_exit === false ? "finalizada-sem" : "concluida";
-  }
+export function cardTone(load: Pick<CargoLoad, "status" | "has_exit">): string {
+  if (load.status === "finalizada") return load.has_exit === false ? "finalizada-sem" : "finalizada-com";
   return load.status;
 }
 
@@ -87,18 +72,6 @@ export interface CargoLoad {
   plate_original?: string | null;
   dt_original?: string | null;
   cargo_products?: { code: string | null; description: string | null; boxes: number | null }[];
-  deleted_at?: string | null;
-  deleted_by?: string | null;
-  delete_reason?: string | null;
-  erro_virada_at?: string | null;
-  erro_virada_motivo?: string | null;
-  remessa_confirmed_at?: string | null;
-  dt_filled_at?: string | null;
-  dt_filled_by?: string | null;
-  liquidated_at?: string | null;
-  liquidated_by?: string | null;
-  liquidation_export_id?: string | null;
-  liquidation_owner?: string | null;
 }
 
 export interface ParsedProduct {
@@ -106,6 +79,10 @@ export interface ParsedProduct {
   description: string;
   boxes: number;
   pallets?: number;
+  /** Linha exata colada pela Remessa, guardada para o e-mail de importação. */
+  raw_line?: string;
+  /** ID do produto no cadastro (SAP quando houver), para o e-mail. */
+  sap_code?: string;
 }
 
 export interface ParsedLoad {
@@ -342,6 +319,9 @@ export function parseCargoText(
         code: row.code || "",
         description: row.description || "",
         boxes: num(row.boxes || "0"),
+        sap_code: (row.code || "").trim(),
+        // Linha original, para o e-mail de importação.
+        raw_line: (lines[i] ?? "").trim(),
       });
     }
   }
@@ -446,6 +426,9 @@ export function parsePositionalRows(lines: string[], fallbackDate = todayISO()):
       description,
       boxes: num(boxes),
       pallets: num(pallets),
+      sap_code: code.trim(),
+      // Linha original, para o e-mail de importação.
+      raw_line: line.trim(),
     });
     load.pallets += num(pallets);
   }
@@ -483,39 +466,61 @@ export function downloadCSV(name: string, rows: Record<string, unknown>[]) {
 /** CT-e manual e-mail. Several loads of the same carrier share one e-mail. */
 export function buildCteEmail(
   loads: Pick<CargoLoad, "dt" | "plate" | "carrier">[],
-  options: { carrier?: string | null; to?: string[] } = {},
   greeting = new Date().getHours() < 12 ? "Bom dia" : "Boa tarde",
 ) {
+  const carrier = loads[0]?.carrier?.trim() || "—";
   const plates = loads.map((l) => normalizePlate(l.plate ?? "") || "—");
-
-  // 1 carga: "DT:" / "Placa:"; 2+ cargas: "DT 1:" / "Placa 1:", "DT 2:" ...
-  const many = loads.length > 1;
-  const data = loads
-    .map((l, i) => {
-      const n = many ? ` ${i + 1}` : "";
-      return `DT${n}: ${l.dt ?? "—"}\nPlaca${n}: ${plates[i]}`;
-    })
-    .join("\n\n");
-
+  const subject = `Emissão CTe manual - ${carrier.toUpperCase()}  ${plates.join(", ")}`;
+  const data = loads.map((l, i) => `DT: ${l.dt ?? "—"}\nPlaca: ${plates[i]}`).join("\n\n");
   const body = [
     `${greeting},`,
     "",
-    "Por gentileza nos apoiar com o desacordo para o transporte abaixo para que seja possível a emissão do CT-e manual!",
+    `Por gentileza nos apoiar com o desacordo do transporte abaixo para que a ${carrier} siga com a emissão do CT-e manual, segue dados abaixo:`,
     "",
     data,
     "",
-    "(Colar evidência do Triangulus)",
+    "[Cole aqui a evidência do Triangulus]",
   ].join("\n");
-  return { subject: `Emissão CTe manual - ${plates.join(", ")}`, body };
+  return { subject, body };
 }
 
-/** Atalho para enviar o CT-e manual: abre o Outlook já com Para/Cópia/Assunto/Corpo. */
-export function mailtoHref(to: string[], cc: string[], subject: string, body: string): string {
-  const parts: string[] = [];
-  if (cc.length) parts.push(`cc=${encodeURIComponent(cc.join(";"))}`);
-  parts.push(`subject=${encodeURIComponent(subject)}`);
-  parts.push(`body=${encodeURIComponent(body)}`);
-  return `mailto:${to.join(";")}?${parts.join("&")}`;
+/**
+ * E-mail de importação (Remessa → Faturamento).
+ * Cada produto de cada carga vira UMA linha, com o texto exatamente como a
+ * Remessa colou e as caixas já corrigidas pelo catálogo.
+ */
+export function buildImportEmail(loads: ParsedLoad[]) {
+  const subject = "Carregamento";
+  const body: string[] = ["Segue dados para faturamento:", ""];
+  /** Data no formato da planilha: 23/11/2026. */
+  const brDate = (iso: string) => {
+    const [y, m, d] = (iso || "").split("-");
+    return d && m && y ? `${d}/${m}/${y}` : iso || "—";
+  };
+  for (const l of loads) {
+    // Uma linha por produto, no mesmo formato da planilha colada:
+    // data, carga, origem, sigla destino, destino, código, descrição,
+    // caixas, pallets, transportadora, placa, DT.
+    for (const p of l.products) {
+      body.push(
+        [
+          brDate(l.load_date),
+          l.load_number,
+          l.origin || "—",
+          l.destination_code || "—",
+          l.destination || "—",
+          p.sap_code || p.code || "—",
+          p.description || "—",
+          fmtNum(p.boxes),
+          fmtNum(p.pallets ?? 0),
+          l.carrier || "—",
+          normalizePlate(l.plate || "") || "—",
+          l.dt || "—",
+        ].join("\t"),
+      );
+    }
+  }
+  return { subject, body: body.join("\n").trimEnd() };
 }
 
 /** NF / ordem lists are stored as comma-separated text. */
@@ -611,557 +616,20 @@ export function cteRecipients(
   loadCarrier: string | null | undefined,
 ) {
   return {
-    /** "Torre": a lista fixa mais os e-mails da transportadora da carga. */
-    to: contacts
-      .filter(
-        (c) =>
-          c.kind === "to_fixed" ||
-          (c.kind === "carrier" && carrierMatches(c.carrier, loadCarrier)),
-      )
+    to: contacts.filter((c) => c.kind === "to_fixed" || (c.kind === "carrier" && carrierMatches(c.carrier, loadCarrier))).map((c) => c.email),
+    // Cópia: conferentes (cópia fixa) + faturamento (marcado com o "imp").
+    cc: contacts
+      .filter((c) => c.kind === "cc_fixed" || (c as { gets_import?: boolean }).gets_import === true)
       .map((c) => c.email),
+  };
+}
+
+/** Para = só o faturamento (contatos marcados com o "imp"). */
+export function importRecipients(
+  contacts: { kind: string; email: string; carrier: string | null; gets_import?: boolean | null }[],
+) {
+  return {
+    to: contacts.filter((c) => c.gets_import === true).map((c) => c.email),
     cc: contacts.filter((c) => c.kind === "cc_fixed").map((c) => c.email),
   };
-}
-
-/** Nomes de exibição das duas listas fixas de e-mail. */
-export const FIXED_GROUP_LABEL: Record<string, string> = {
-  to_fixed: "Torre",
-  cc_fixed: "Cópia",
-};
-
-/* ------------------------------------------------------------------ */
-/* Importação pela Remessa: datas e pendência                          */
-/* ------------------------------------------------------------------ */
-
-/**
- * A carga aparece em "Cargas de hoje" quando a REMESSA a importou hoje,
- * mesmo que ela tenha entrado pela agenda há dias. O que decide é a
- * confirmação da Remessa, não a data prevista.
- */
-export function showsInToday(
-  l: Pick<CargoLoad, "load_date" | "status" | "created_at" | "remessa_confirmed_at">,
-  today = todayISO(),
-): boolean {
-  // Ainda aguardando a Remessa nunca entra em "Cargas de hoje".
-  if (isAgendaLocked(l)) return false;
-  const confirmada = !!l.remessa_confirmed_at
-    ? localDay(l.remessa_confirmed_at) === today
-    : localDay(l.created_at) === today;
-  return confirmada || l.load_date === today;
-}
-
-/**
- * O filtro "ocultar cargas futuras" esconde tudo que ainda não entrou
- * na operação: carga de dia futuro E carga aguardando a Remessa, mesmo
- * que o dia dela já tenha passado.
- */
-export function hiddenByFutureFilter(
-  l: Pick<CargoLoad, "status" | "load_date">,
-  today = todayISO(),
-): boolean {
-  return isFutureLoad(l, today) || isAgendaLocked(l);
-}
-
-/* ------------------------------------------------------------------ */
-/* CT-e manual em lote, pendência da virada e histórico de pallets     */
-/* ------------------------------------------------------------------ */
-
-const normCarrier = (v: string | null | undefined) =>
-  (v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-
-/** CT-e manual: só "Impressa ag. CT-e" e só se a carga foi importada hoje. */
-export function canRequestCte(
-  l: Pick<CargoLoad, "status" | "created_at">,
-  today = todayISO(),
-): { ok: boolean; reason?: string } {
-  if (l.status !== "impressa") return { ok: false, reason: "Só cargas com status Impressa ag. CT-e" };
-  if (!importedToday(l, today))
-    return { ok: false, reason: "CT-e manual só pode ser solicitado no dia em que a carga foi importada" };
-  return { ok: true };
-}
-
-/** Pode marcar o checkbox desta carga dado o que já está marcado (mesma transportadora). */
-export function canSelectWith(
-  l: Pick<CargoLoad, "status" | "created_at" | "carrier">,
-  selected: Pick<CargoLoad, "carrier">[],
-  today = todayISO(),
-): boolean {
-  if (!canRequestCte(l, today).ok) return false;
-  return !selected.length || normCarrier(selected[0]!.carrier) === normCarrier(l.carrier);
-}
-
-/** Valida a seleção inteira antes de montar o e-mail. */
-export function validateCteSelection(
-  loads: Pick<CargoLoad, "status" | "created_at" | "carrier">[],
-  today = todayISO(),
-): { ok: boolean; error?: string } {
-  if (!loads.length) return { ok: false, error: "Selecione ao menos uma carga" };
-  for (const l of loads) {
-    const r = canRequestCte(l, today);
-    if (!r.ok) return { ok: false, error: r.reason };
-  }
-  if (new Set(loads.map((l) => normCarrier(l.carrier))).size > 1)
-    return { ok: false, error: "Só é possível juntar cargas da mesma transportadora" };
-  return { ok: true };
-}
-
-/** Virou o dia e a carga não foi finalizada: vai para a lista de pendências. */
-export function isOverdue(l: Pick<CargoLoad, "status" | "created_at">, today = todayISO()): boolean {
-  return !importedToday(l, today) && l.status !== "finalizada" && l.status !== "erro_virada";
-}
-
-/** Transições permitidas. De "erro_virada" (pendência) só se vai para "finalizada". */
-export function allowedNextStatuses(current: string): CargoStatus[] {
-  if (current === "erro_virada") return ["finalizada"];
-  if (current === "finalizada") return [];
-  return (["pendente", "faturado", "impressa", "corte", "finalizada"] as CargoStatus[]).filter((s) => s !== current);
-}
-
-export interface PlatePalletRow {
-  load_date: string;
-  load_number: string;
-  pallets: number;
-  carrier: string | null;
-  boxes_total: number;
-  products_count: number;
-  vehicle_capacity: number;
-}
-
-/** Resumo das últimas cargas da placa: maior quantidade de pallets já levada. */
-export function summarizePallets(rows: Pick<PlatePalletRow, "pallets">[]) {
-  const values = rows.map((r) => Number(r.pallets) || 0);
-  return { max: values.length ? Math.max(...values) : 0, values };
-}
-
-/**
- * Troca de DT. A menção da transportadora só entra quando o MDF-e está
- * marcado; a da TORRET1 entra sempre; o abastecimento é fixo.
- */
-export function buildDtSwapEmail(
-  swap: {
-    oldDt: string;
-    newDt: string;
-    plate?: string | null;
-    carrier?: string | null;
-    mdfe?: boolean;
-    motivo?: string;
-    nfs?: string;
-    /** E-mail escolhido no modal: é ele que vira a menção da 2ª linha. */
-    mention?: string;
-  },
-  greeting = new Date().getHours() < 12 ? "Bom dia" : "Boa tarde",
-): { subject: string; body: string } {
-  const carrier = (swap.carrier ?? "").trim();
-  const subject = `Troca de DT: ${swap.newDt} | ${carrier.toUpperCase()}`;
-  const motivo = (swap.motivo ?? "").trim() || "faturamento inverter SKU";
-  // A 2ª linha cita só o e-mail selecionado — sem mailto:, que o Outlook
-  // já transforma em link e ficava aparecendo duplicado.
-  const carrierMention = `<${swap.mention?.trim() || carrier}>`;
-
-  // Torre sempre; a transportadora só quando há MDF-e a cancelar.
-  const apoio = swap.mdfe
-    ? [
-        `${carrierMention}, por gentileza nos apoiar com o cancelamento do MDF-e!`,
-        "",
-        `<TORRET1>, por gentileza nos apoiar com o cancelamento do CT-e e troca de transporte devido ${motivo}.`,
-      ]
-    : [
-        `<TORRET1>, por gentileza nos apoiar com o cancelamento do CT-e e troca de transporte devido ${motivo}.`,
-      ];
-
-  const body = [
-    `${greeting}!`,
-    "",
-    ...apoio,
-    "",
-    `<abastecimento.pr@kof.com>, favor desconsiderar as notas fiscais ${(swap.nfs ?? "").trim() || "citadas"}, essas serão canceladas.`,
-    "",
-    `Transporte antigo: ${swap.oldDt}`,
-    `Transporte novo: ${swap.newDt}`,
-  ].join("\n");
-  return { subject, body };
-}
-
-/* ------------------------------------------------------------------ */
-/* Agenda do Faturamento -> confirmação da Remessa                     */
-/* ------------------------------------------------------------------ */
-
-export interface ParsedAgenda {
-  load_date: string;
-  load_number: string;
-  origin: string;
-  destination: string;
-  destination_code: string;
-  /** DT: chave do casamento entre agenda e Remessa. */
-  dt: string;
-  pallets: number;
-  products: { code: string; description: string; boxes: number }[];
-  warnings: string[];
-}
-
-/** A agenda escreve "Definir" e "-" no lugar de vazio. */
-const agendaBlank = (v: unknown) => {
-  const t = String(v ?? "").trim();
-  if (!t || t === "-" || t === "—" || /^definir$/i.test(t) || /^#N\/?D$/i.test(t)) return "";
-  return t;
-};
-
-/**
- * Lê a aba "Programação" da agenda. Na agenda uma carga com vários produtos
- * ocupa VÁRIAS linhas com o mesmo DT — agrupamos por N° da Carga e o DT
- * é único por carga (se divergir entre linhas, vira aviso).
- */
-export function parseAgenda(rows: unknown[][]): { loads: ParsedAgenda[]; errors: string[] } {
-  const errors: string[] = [];
-  const HEAD = {
-    data: ["data"],
-    carga: ["n° da carga", "n da carga", "nº da carga", "carga"],
-    origem: ["origem"],
-    destino_code: ["destino"],
-    destino: ["destino.1", "destino 2"],
-    sku: ["sku"],
-    descricao: ["descrição", "descricao"],
-    caixas: ["cxs progr. arred.", "cxs progr", "caixas"],
-    pallets: ["pallets", "paletes"],
-    transporte: ["transporte", "dt"],
-  };
-
-  // Acha a linha de cabeçalho.
-  let h = -1;
-  for (let i = 0; i < rows.length; i++) {
-    const cells = (rows[i] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
-    if (cells.includes("data") && cells.some((c) => c.includes("carga"))) { h = i; break; }
-  }
-  if (h < 0) {
-    return { loads: [], errors: ["Cabeçalho da agenda não encontrado (aba Programação)."] };
-  }
-
-  const header = (rows[h] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
-  const idx = (names: string[]) => {
-    for (const n of names) {
-      const i = header.indexOf(n);
-      if (i >= 0) return i;
-    }
-    return -1;
-  };
-  const col = {
-    data: idx(HEAD.data), carga: idx(HEAD.carga), origem: idx(HEAD.origem),
-    destino_code: idx(HEAD.destino_code), sku: idx(HEAD.sku),
-    descricao: idx(HEAD.descricao), caixas: idx(HEAD.caixas),
-    pallets: idx(HEAD.pallets), transporte: idx(HEAD.transporte),
-  };
-  // "Destino" aparece duas vezes: a 2ª é o nome da praça.
-  const destNameCols = header
-    .map((c, i) => (c === "destino" ? i : -1))
-    .filter((i) => i >= 0);
-  const destName = destNameCols.length > 1 ? destNameCols[1]! : destNameCols[0] ?? -1;
-
-  if (col.carga < 0 || col.transporte < 0) {
-    return { loads: [], errors: ["Colunas 'N° da Carga' ou 'Transporte' não encontradas."] };
-  }
-
-  const byNumber = new Map<string, ParsedAgenda>();
-  const at = (row: unknown[], i: number) => (i >= 0 ? agendaBlank(row[i]) : "");
-
-  for (let r = h + 1; r < rows.length; r++) {
-    const row = rows[r] ?? [];
-    const number = at(row, col.carga);
-    if (!number) continue;
-    const code = at(row, col.sku);
-    const desc = at(row, col.descricao);
-    if (!code && !desc) continue;
-
-    const dt = at(row, col.transporte).replace(/\D/g, "");
-    const boxes = Number(at(row, col.caixas).replace(/\./g, "").replace(",", ".")) || 0;
-    const linePallets = Number(at(row, col.pallets).replace(/\./g, "").replace(",", ".")) || 0;
-
-    let load = byNumber.get(number);
-    if (!load) {
-      load = {
-        load_date: toISODateAgenda(row[col.data]),
-        load_number: number,
-        origin: at(row, col.origem),
-        destination: at(row, destName),
-        destination_code: at(row, col.destino_code).toUpperCase(),
-        dt,
-        pallets: 0,
-        products: [],
-        warnings: [],
-      };
-      byNumber.set(number, load);
-    } else if (dt && load.dt && dt !== load.dt) {
-      load.warnings.push(`DT divergente na agenda: ${load.dt} x ${dt}`);
-    }
-    // Pallets vêm repetidos nas linhas da carga: vale o maior.
-    if (linePallets > load.pallets) load.pallets = linePallets;
-    load.products.push({ code, description: desc, boxes });
-  }
-
-  const loads = [...byNumber.values()];
-  for (const l of loads) {
-    if (!l.load_date) {
-      l.load_date = todayISO();
-      l.warnings.push("Data ausente na agenda — usando hoje");
-    }
-    if (!l.dt) l.warnings.push("DT ausente na agenda");
-    if (!l.origin) l.warnings.push("Origem ausente");
-    if (!l.products.length) l.warnings.push("Nenhum produto");
-  }
-  return { loads, errors };
-}
-
-/**
- * Data da agenda: pode vir como Date (o leitor converte o serial do Excel),
- * como número de série cru, ou como texto. Se nada resolver, cai para hoje —
- * mas o aviso fica registrado na carga.
- */
-function toISODateAgenda(raw: unknown): string {
-  if (raw instanceof Date && !isNaN(raw.getTime())) {
-    return raw.toISOString().slice(0, 10);
-  }
-  if (typeof raw === "number" && raw > 36526 && raw < 73415) {
-    return new Date(Date.UTC(1899, 11, 30) + raw * 86400000).toISOString().slice(0, 10);
-  }
-  const texto = String(raw ?? "").trim();
-  if (!texto) return "";
-  const iso = texto.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  return toISODate(texto);
-}
-
-/** Compara o que a Remessa mandou com o que a agenda tinha: "de -> para". */
-export function diffAgendaProducts(
-  agenda: { code: string; boxes: number }[],
-  remessa: { code: string; boxes: number }[],
-): string[] {
-  const out: string[] = [];
-  const rem = new Map(remessa.map((p) => [p.code, p.boxes]));
-  for (const a of agenda) {
-    if (!rem.has(a.code)) {
-      out.push(`${a.code}: agenda ${a.boxes} cx, não veio na Remessa`);
-    } else if (rem.get(a.code) !== a.boxes) {
-      out.push(`${a.code}: ${a.boxes} cx -> ${rem.get(a.code)} cx`);
-    }
-  }
-  for (const r of remessa) {
-    if (!agenda.some((a) => a.code === r.code)) {
-      out.push(`${r.code}: não estava na agenda (${r.boxes} cx)`);
-    }
-  }
-  return out;
-}
-
-/* ------------------------------------------------------------------ */
-/* Carga da agenda: bloqueio até ser faturada                          */
-/* ------------------------------------------------------------------ */
-
-/**
- * A Remessa já importou esta carga?
- * "Aguardando Remessa" é a carga que o Faturamento subiu e a Remessa
- * ainda não confirmou — é ela que não anda e não conta tempo.
- */
-export function isAgendaLocked(l: Pick<CargoLoad, "status">): boolean {
-  return l.status === "pendente_remessa";
-}
-
-/**
- * Pronta para faturar: foi importada pela Remessa (ou veio de fora da
- * agenda) E o dia da carga já chegou.
- */
-export function isReadyToInvoice(
-  l: Pick<CargoLoad, "status" | "load_date">,
-  today = todayISO(),
-): boolean {
-  return !isAgendaLocked(l) && l.load_date <= today;
-}
-
-/**
- * O tempo de espera só corre a partir do momento em que a Remessa
- * importou a carga, e só depois que o dia da carga chegou.
- * Antes disso o card não mostra tempo nenhum.
- */
-export function countsTime(
-  l: Pick<CargoLoad, "status" | "load_date">,
-  today = todayISO(),
-): boolean {
-  if (isAgendaLocked(l)) return false;          // Remessa ainda não importou
-  return l.load_date <= today;                   // solta o tempo no dia da carga
-}
-
-/**
- * Pendência da lista: carga de HOJE que a Remessa ainda não importou.
- * É ela que desce para o fim da lista, abaixo das prontas.
- */
-export function isAwaitingRemessa(
-  l: Pick<CargoLoad, "status" | "load_date">,
-  today = todayISO(),
-): boolean {
-  return isAgendaLocked(l) && l.load_date <= today;
-}
-
-/** Carga de dia posterior a hoje (bloqueada até chegar o dia). */
-export function isFutureLoad(
-  l: Pick<CargoLoad, "load_date">,
-  today = todayISO(),
-): boolean {
-  return !!l.load_date && l.load_date > today;
-}
-
-/** Motivo pelo qual a carga não pode ser mexida agora (null = liberada). */
-export function lockReason(
-  l: Pick<CargoLoad, "status" | "load_date">,
-  today = todayISO(),
-): string | null {
-  if (isAgendaLocked(l)) return "Carga ainda não importada pela Remessa.";
-  if (isFutureLoad(l, today)) return "Carga prevista para outro dia — não está pronta para faturar.";
-  return null;
-}
-
-/**
- * Ordem da lista, do topo para o fim:
- * pendente faturamento > erro > impressa ag. CT-e > faturado >
- * finalizada sem saída > finalizada com saída.
- * Carga ainda aguardando a Remessa desce para depois de todas as prontas.
- */
-const STATUS_ORDER: Record<string, number> = {
-  pendente: 0,
-  erro_virada: 1,
-  impressa: 2,
-  faturado: 3,
-};
-
-export function statusRank(l: Pick<CargoLoad, "status" | "has_exit">): number {
-  if (l.status === "finalizada") return l.has_exit === false ? 4 : 5;
-  return STATUS_ORDER[l.status] ?? 6;
-}
-
-export function sortByReadiness<T extends Pick<CargoLoad, "status" | "load_date" | "has_exit">>(
-  loads: T[],
-  today = todayISO(),
-): T[] {
-  return [...loads].sort((a, b) => {
-    const pa = isReadyToInvoice(a, today) ? 0 : 1;
-    const pb = isReadyToInvoice(b, today) ? 0 : 1;
-    if (pa !== pb) return pa - pb;
-    const ra = statusRank(a);
-    const rb = statusRank(b);
-    if (ra !== rb) return ra - rb;
-    return (a.load_number ?? "").localeCompare(b.load_number ?? "", "pt-BR", { numeric: true });
-  });
-}
-
-/** Filtros da listinha do funil. */
-export interface ListFilters {
-  hideFinalized: boolean;
-  hideFuture: boolean;
-}
-
-export const NO_FILTERS: ListFilters = { hideFinalized: false, hideFuture: false };
-
-/**
- * Aplica os filtros do funil a uma lista já pronta.
- *
- * "Ocultar cargas futuras" esconde o que ainda não entrou na operação:
- * a carga prevista para depois de hoje E a de hoje que a Remessa ainda
- * não importou ("Aguardando Remessa").
- */
-export function applyFilters<
-  T extends Pick<CargoLoad, "status" | "has_exit" | "load_date">,
->(loads: T[], filters: ListFilters, today = todayISO()): T[] {
-  return loads.filter((l) => {
-    if (filters.hideFinalized && l.status === "finalizada") return false;
-    if (filters.hideFuture && hiddenByFutureFilter(l, today)) return false;
-    return true;
-  });
-}
-
-/* ------------------------------------------------------------------ */
-/* Liquidação: período, critérios e confirmação                        */
-/* ------------------------------------------------------------------ */
-
-export interface LiquidationCriteria {
-  /** Só cargas com este código de produto (SKU). */
-  productCode?: string;
-  /** Só cargas faturadas por este usuário. */
-  user?: string;
-  from?: string;
-  to?: string;
-}
-
-/** Cargas pendentes de liquidação: finalizadas com saída e ainda não confirmadas. */
-export function pendingLiquidation<T extends Pick<CargoLoad, "status" | "has_exit" | "load_date">>(
-  loads: T[],
-): T[] {
-  return loads.filter((l) => l.status === "finalizada" && l.has_exit !== false);
-}
-
-/** Aplica os critérios escolhidos no menu de liquidação. */
-export function filterLiquidation<T extends CargoLoad>(
-  loads: T[],
-  c: LiquidationCriteria,
-): T[] {
-  return pendingLiquidation(loads).filter((l) => {
-    if (c.from && l.load_date < c.from) return false;
-    if (c.to && l.load_date > c.to) return false;
-    if (c.productCode) {
-      const tem = (l.cargo_products ?? []).some((p) => (p.code ?? "") === c.productCode);
-      if (!tem) return false;
-    }
-    if (c.user && (l as unknown as { liquidation_by?: string }).liquidation_by !== c.user) return false;
-    return true;
-  });
-}
-
-/** Resumo para o aviso de pendência na tela do faturamento. */
-export function liquidationLabel(c: LiquidationCriteria): string {
-  const partes: string[] = [];
-  if (c.from || c.to) partes.push(`período ${c.from ?? "início"} a ${c.to ?? "hoje"}`);
-  if (c.productCode) partes.push(`produto ${c.productCode}`);
-  if (c.user) partes.push(`usuário ${c.user}`);
-  return partes.length ? `por critério: ${partes.join(" · ")}` : "sem critério";
-}
-
-/**
- * E-mail que a Remessa dispara ao formalizar a importação:
- * um resumo simples e organizado das cargas que acabaram de entrar.
- */
-/** E-mails das contas do faturamento: destino padrão do e-mail de importação. */
-export function faturamentoEmails(
-  contacts: { kind: string; email: string }[],
-): string[] {
-  return contacts.filter((c) => c.kind === "to_fixed").map((c) => c.email);
-}
-
-export function buildImportEmail(
-  loads: Pick<CargoLoad, "load_number" | "dt" | "plate" | "carrier" | "destination" | "pallets">[],
-): { subject: string; body: string } {
-  const today = new Date().toLocaleDateString("pt-BR");
-  const subject = `Cargas importadas - ${today}`;
-  const linhas = loads.map((l) => {
-    const partes = [
-      `Carga ${l.load_number}`,
-      l.dt ? `DT ${l.dt}` : null,
-      l.plate ? normalizePlate(l.plate) : null,
-      l.carrier || null,
-      l.destination || null,
-      l.pallets ? `${l.pallets} plt` : null,
-    ].filter(Boolean);
-    return `- ${partes.join(" | ")}`;
-  });
-  const body = [
-    "Segue para faturamento:",
-    "",
-    ...(linhas.length ? linhas : ["- (nenhuma carga)"]),
-  ].join("\n");
-  return { subject, body };
-}
-
-/**
- * Carga MB que ainda está sem DT. O Faturamento informa o DT na primeira
- * vez que abre a carga — a Remessa importou sem, porque o DT é nosso.
- */
-export function needsMbDt(
-  l: Pick<CargoLoad, "source" | "dt" | "dt_filled_at">,
-): boolean {
-  return l.source === "MB" && !l.dt && !l.dt_filled_at;
 }
