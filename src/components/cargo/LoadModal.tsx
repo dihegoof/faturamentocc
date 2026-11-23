@@ -92,7 +92,8 @@ export function LoadModal({
                     : cleanDestination(load.destination)}
                 </span>
                 <div className="ml-auto flex gap-2">
-                  {fat && (
+                  {/* Solicitar CT-e só faz sentido em "Impressa ag. CT-e". */}
+                  {fat && load.status === "impressa" && (
                     <Button size="sm" variant="outline" onClick={() => setCteOpen(true)}>
                       <Mail className="h-4 w-4" /> CT-e
                     </Button>
@@ -468,14 +469,14 @@ function StatusSection({ load, onDone }: { load: CargoLoad; onDone: () => void }
 
   return (
     <section className="space-y-2 border-t pt-3">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div className="flex flex-wrap justify-center gap-2">
         {CHOICES.map((c) => (
           <button
             key={c.key}
             type="button"
             onClick={() => (c.key === "corte" ? setErrorMode(true) : void apply(c.key))}
             className={cn(
-              "rounded-md px-3 py-2 text-sm font-semibold transition",
+              "min-w-[8.5rem] rounded-md px-3 py-2 text-sm font-semibold transition",
               c.tone,
               current === c.key ? "ring-2 ring-foreground" : "opacity-70 hover:opacity-100",
             )}
@@ -486,7 +487,7 @@ function StatusSection({ load, onDone }: { load: CargoLoad; onDone: () => void }
         ))}
       </div>
       {current === "finalizada" && (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm">
+        <div className="flex flex-wrap items-center justify-center gap-2 rounded-md border p-2 text-sm">
           <span className="font-semibold">Saiu da unidade?</span>
           {([[true, "Com saída"], [false, "Sem saída"]] as const).map(([v, l]) => (
             <button key={l} type="button" onClick={() => void setExit(v)}
