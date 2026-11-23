@@ -79,6 +79,12 @@ export function LoadModal({
         clique do mini modal de DT que abre por cima dele.
       */}
       <Dialog open={!!load} onOpenChange={(o) => !o && onClose()} modal={false}>
+        {/*
+          Sem o modo modal o Radix não desenha o overlay dele, então o fundo
+          fica claro. Esta camada escurece por conta própria e não captura
+          clique (pointer-events-none), para não travar o mini modal de DT.
+        */}
+        {load && <div className="fixed inset-0 z-40 bg-black/60 pointer-events-none" aria-hidden="true" />}
         <DialogContent
           onOpenAutoFocus={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
@@ -115,7 +121,7 @@ export function LoadModal({
                     variant="outline"
                     className="text-destructive hover:text-destructive"
                     onClick={() => setDelOpen(true)}
-                    title="Excluir carga (o admin pode restaurar)"
+                    title="Excluir carga"
                   >
                     <Trash2 className="h-4 w-4" /> Excluir
                   </Button>
