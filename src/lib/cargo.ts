@@ -81,6 +81,8 @@ export interface ParsedProduct {
   pallets?: number;
   /** Linha exata colada pela Remessa, guardada para o e-mail de importação. */
   raw_line?: string;
+  /** ID do produto no cadastro (SAP quando houver), para o e-mail. */
+  sap_code?: string;
 }
 
 export interface ParsedLoad {
@@ -317,6 +319,7 @@ export function parseCargoText(
         code: row.code || "",
         description: row.description || "",
         boxes: num(row.boxes || "0"),
+        sap_code: (row.code || "").trim(),
         // Linha original, para o e-mail de importação.
         raw_line: (lines[i] ?? "").trim(),
       });
@@ -423,6 +426,7 @@ export function parsePositionalRows(lines: string[], fallbackDate = todayISO()):
       description,
       boxes: num(boxes),
       pallets: num(pallets),
+      sap_code: code.trim(),
       // Linha original, para o e-mail de importação.
       raw_line: line.trim(),
     });
@@ -489,16 +493,22 @@ export function buildImportEmail(loads: ParsedLoad[], greeting = new Date().getH
   const subject = "Carregamento";
   const body: string[] = [greeting + ",", "", "Segue o carregamento importado pela Remessa:", ""];
   for (const l of loads) {
-    body.push(`Carga ${l.load_number}${l.plate ? ` · ${normalizePlate(l.plate)}` : ""}`, "");
+    // Cabeçalho da carga: id, origem/destino, DT, placa e transportadora.
+    body.push(
+      [
+        `ID carga: ${l.load_number}`,
+        `Origem: ${l.origin || "—"}`,
+        `Destino: ${[l.destination_code, l.destination].filter(Boolean).join(" ") || "—"}`,
+        `DT: ${l.dt || "—"}`,
+        `Placa: ${normalizePlate(l.plate || "") || "—"}`,
+        `Transportadora: ${l.carrier || "—"}`,
+      ].join(" | "),
+      "",
+    );
+    // Uma linha por produto: id do produto, descrição e caixas (já corrigidas).
     for (const p of l.products) {
-      // A linha colada, com só as caixas ajustadas.
-      const raw = p.raw_line && p.raw_line.trim()
-        ? p.raw_line.replace(/\t/g, " | ").trim()
-        : [l.load_number, l.origin, l.destination_code, l.destination, p.code, p.description, String(p.boxes)].join(" | ");
-      const typed = raw.match(/(\d[\d.]*)\s*(cx|caixas)?\s*$/i);
-      body.push(typed && Number(typed[1].replace(/\./g, "")) !== p.boxes
-        ? raw.replace(/(\d[\d.]*)(\s*(?:cx|caixas)?\s*)$/i, String(p.boxes) + "$2")
-        : raw);
+      const id = p.sap_code || p.code || "—";
+      body.push(`${id} | ${p.description || "—"} | ${p.boxes} cx`);
     }
     body.push("");
   }
