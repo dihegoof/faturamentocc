@@ -477,6 +477,7 @@ export function buildCteEmail(
 /** NF / ordem lists are stored as comma-separated text. */
 export const splitList = (v: string | null | undefined) =>
   (v ?? "").split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean);
+
 export const joinList = (xs: string[]) => (xs.length ? [...new Set(xs)].join(", ") : null);
 
 export interface CatalogProduct {
@@ -642,20 +643,6 @@ export function sortByReadiness<T extends Pick<CargoLoad, "plate" | "carrier" | 
 /** Carga MB que veio sem DT: o mini modal dispara na primeira abertura. */
 export const needsMbDt = (l: Pick<CargoLoad, "source" | "dt">, ) =>
   (l.source ?? "").toUpperCase() === "MB" && !(l.dt ?? "").trim();
-
-/** Baixa um CSV no navegador. */
-export function downloadCSV(filename: string, rows: Record<string, unknown>[]): void {
-  if (!rows.length) return;
-  const cols = Object.keys(rows[0]!);
-  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const csv = [cols.join(";"), ...rows.map((r) => cols.map((c) => esc(r[c])).join(";"))].join("\r\n");
-  const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 /** Link mailto com To/Cc/subject/body já codificados. */
 export function mailtoHref(to: string[], cc: string[], subject: string, body: string): string {
