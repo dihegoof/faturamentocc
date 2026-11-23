@@ -7,29 +7,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { buildImportEmail, fmtNum, isValidPlate, importRecipients, mailtoHref, normalizePlate, palletsFor, todayISO } from "@/lib/cargo";
-import { fetchCatalog, fetchClients, fetchContacts, importLoads } from "@/lib/cargo-api";
+import { fetchCatalog, fetchContacts, importLoads } from "@/lib/cargo-api";
 
 type Row = { code: string; boxes: string };
-
-/** Origem de toda carga importada neste app: centro de Bauru. */
-const ORIGIN = "B0AC";
 
 /** MB (franquia): Remessa imports without DT; products typed by boxes. Faturamento fills the DT later. */
 export function ImportMBDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const qc = useQueryClient();
-  const { data: catalog = [] } = useQuery({ queryKey: ["catalog"], queryFn: fetchCatalog, enabled: open });
-  /** Clientes do cadastro, para a Remessa escolher o destino. */
-  const { data: clientes = [] } = useQuery({ queryKey: ["clients"], queryFn: fetchClients, enabled: open });
-  /** Contatos com o "imp" ligado (Faturamento) e a cópia fixa (conferentes). */
-  const { data: contacts = [] } = useQuery({ queryKey: ["contacts"], queryFn: fetchContacts, enabled: open });
+  const { data: contacts = [] } = useQuery({ queryKey: ["contacts"], queryFn: fetchContacts });
 
+  const { data: catalog = [] } = useQuery({ queryKey: ["catalog"], queryFn: fetchCatalog, enabled: open });
   const empty = { load_number: "", plate: "", carrier: "", destination: "", load_date: todayISO() };
   const [form, setForm] = useState(empty);
   const [rows, setRows] = useState<Row[]>([{ code: "", boxes: "" }]);
   const [saving, setSaving] = useState(false);
-  /** Destino escolhido no select (cliente do cadastro). */
-  const destino = clientes.find((c) => c.name === form.destination);
-
   const lines = rows.map((r) => {
     const p = catalog.find((c) => c.code === r.code);
     const boxes = Number(r.boxes) || 0;
@@ -45,12 +36,7 @@ export function ImportMBDialog({ open, onOpenChange }: { open: boolean; onOpenCh
     setSaving(true);
     try {
       const { inserted, skipped } = await importLoads([{
-        ...form,
-        // Origem e sempre Bauru; quem marca a carga como MB e o source.
-        origin: ORIGIN,
-        destination_code: destino?.center_code ?? "",
-        destination: destino?.name ?? form.destination,
-        dt: "",
+        ...form, origin: "MB", destination_code: "", dt: "",
         plate: normalizePlate(form.plate), pallets: totalPallets,
         products: valid.map((l) => ({ code: l.product!.code, description: l.product!.short_name || l.product!.description, boxes: l.boxes })),
         warnings: isValidPlate(form.plate) ? [] : [`Placa fora do padrão: ${normalizePlate(form.plate)}`],
@@ -59,24 +45,17 @@ export function ImportMBDialog({ open, onOpenChange }: { open: boolean; onOpenCh
       if (inserted) {
         toast.success("Carga MB importada — o Faturamento informa o DT");
         qc.invalidateQueries({ queryKey: ["loads"] });
-        // E-mail de importação: Faturamento no Para, conferentes em Cópia.
+        // E-mail de importação com a linha digitada e as caixas calculadas.
         const { to, cc } = importRecipients(contacts);
         const mail = buildImportEmail([{
-          load_date: form.load_date,
-          load_number: form.load_number,
-          origin: ORIGIN,
-          destination: destino?.name ?? form.destination,
-          destination_code: destino?.center_code ?? "",
-          carrier: form.carrier,
-          plate: normalizePlate(form.plate),
-          dt: "",
+          load_date: form.load_date, load_number: form.load_number, origin: ORIGIN,
+          destination: form.destination, destination_code: destino?.center_code ?? "",
+          carrier: form.carrier, plate: normalizePlate(form.plate), dt: "",
           pallets: totalPallets,
           products: valid.map((l) => ({
-            code: l.product!.code,
-            description: l.product!.short_name || l.product!.description,
-            boxes: l.boxes,
-            pallets: l.pallets,
-            sap_code: l.product!.sap_code || l.product!.code,
+            code: l.product!.code, description: l.product!.short_name || l.product!.description,
+            boxes: l.boxes, pallets: l.pallets,
+            raw_line: [form.load_number, ORIGIN, form.destination, l.product!.code, l.product!.short_name || l.product!.description, String(l.boxes)].join(" | "),
           })),
           warnings: [],
         }]);
@@ -99,30 +78,12 @@ export function ImportMBDialog({ open, onOpenChange }: { open: boolean; onOpenCh
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader><DialogTitle className="font-display text-2xl">Importar carga MB</DialogTitle></DialogHeader>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-          {([["load_number", "Nº Carga"], ["plate", "Placa"], ["carrier", "Transportadora"], ["load_date", "Data"]] as const).map(([k, l]) => (
+          {([["load_number", "Nº Carga"], ["plate", "Placa"], ["carrier", "Transportadora"], ["destination", "Destino"], ["load_date", "Data"]] as const).map(([k, l]) => (
             <div key={k} className="space-y-1">
-              <Label htmlFor={`mb-${k}`}>
-                {l}{(k === "load_number" || k === "plate") && <span className="text-destructive"> *</span>}
-              </Label>
+              <Label htmlFor={`mb-${k}`}>{l}</Label>
               <Input id={`mb-${k}`} type={k === "load_date" ? "date" : "text"} value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} />
             </div>
           ))}
-          <div className="space-y-1">
-            <Label htmlFor="mb-destination">Destino <span className="text-destructive">*</span></Label>
-            <select
-              id="mb-destination"
-              value={form.destination}
-              onChange={(e) => setForm({ ...form, destination: e.target.value })}
-              className="h-9 w-full rounded-md border bg-background px-2 text-sm"
-            >
-              <option value="">Selecione...</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.name}>
-                  {c.center_code ? `${c.center_code} - ` : ""}{c.name}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
         <div className="overflow-hidden rounded-md border">
           <table className="w-full text-sm">
@@ -154,11 +115,6 @@ export function ImportMBDialog({ open, onOpenChange }: { open: boolean; onOpenCh
             </tbody>
           </table>
         </div>
-        {!clientes.length && (
-          <p className="text-xs text-muted-foreground">
-            Nenhum cliente cadastrado - o Painel cadastra os clientes.
-          </p>
-        )}
         {!catalog.length && <p className="text-xs text-muted-foreground">Nenhum produto cadastrado — o Painel cadastra os produtos.</p>}
         <DialogFooter><Button onClick={save} disabled={saving}>Gravar carga MB</Button></DialogFooter>
       </DialogContent>
