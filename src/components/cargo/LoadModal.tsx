@@ -117,7 +117,7 @@ export function LoadModal({
                     variant="outline"
                     className="text-destructive hover:text-destructive"
                     onClick={() => setDelOpen(true)}
-                    title="Excluir carga (o admin pode restaurar)"
+                    title="Excluir carga"
                   >
                     <Trash2 className="h-4 w-4" /> Excluir
                   </Button>
