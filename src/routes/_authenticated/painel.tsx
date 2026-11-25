@@ -11,6 +11,7 @@ import { AgendaSyncToggle } from "@/components/cargo/AgendaSyncToggle";
 import { DeletedLoadsSection } from "@/components/cargo/DeletedLoadsSection";
 import { getCurrentUser } from "@/lib/auth";
 import { SectionInfo } from "@/components/cargo/SectionInfo";
+import { EraseAllButton } from "@/components/cargo/EraseAllButton";
 
 export const Route = createFileRoute("/_authenticated/painel")({
   head: () => ({
@@ -83,6 +84,10 @@ function Painel() {
 
       <Titulo id="usuarios" />
       {isAdmin && <UsersSection />}
+
+      <h2 className="font-display text-xl font-bold">
+      E-mails para CT-e manual<EraseAllButton />
+      </h2>
     </main>
   );
 }

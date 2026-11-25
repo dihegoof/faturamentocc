@@ -668,3 +668,18 @@ export async function setMbDt(loadId: string, dt: string, by: string) {
   });
   if (error) throw error;
 }
+
+export async function eraseAllLoads(): Promise<{ deleted: number }> {
+  // Produtos e histórico primeiro, por garantia (as FKs têm cascade).
+  await supabase.from("cargo_products").delete().not("id", "is", null);
+  await supabase.from("cargo_history").delete().not("id", "is", null);
+
+  const { data, error } = await supabase
+    .from("cargo_loads")
+    .delete()
+    .not("id", "is", null)
+    .select("id");
+
+  if (error) throw error;
+  return { deleted: data?.length ?? 0 };
+}
