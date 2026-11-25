@@ -11,7 +11,7 @@ export const Route = createFileRoute("/auth")({
   head: () => ({ meta: [
     { title: "Entrar — Cargas CocaCola" },
     { name: "description", content: "Acesso por e-mail à operação de cargas CocaCola." },
-    { property: "og:title", content: "Entrar — Cargas CocaCola" },
+    { property: "og:title", content: "Atutentique-se! Cargas C.C" },
     { property: "og:description", content: "Acesso à plataforma operacional de cargas." },
     { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" },
   ] }),
