@@ -79,6 +79,8 @@ export interface ParsedProduct {
   description: string;
   boxes: number;
   pallets?: number;
+  sap_code?: string;
+  raw_line?: string;
 }
 
 export interface ParsedLoad {
@@ -472,45 +474,6 @@ export function buildCteEmail(
     "[Cole aqui a evidência do Triangulus]",
   ].join("\n");
   return { subject, body };
-}
-
-/**
- * E-mail de importação (Remessa → Faturamento).
- * Cada produto de cada carga vira UMA linha, com o texto exatamente como a
- * Remessa colou e as caixas já corrigidas pelo catálogo.
- */
-export function buildImportEmail(loads: ParsedLoad[]) {
-  const subject = "Carregamento";
-  const body: string[] = ["Segue dados para faturamento:", ""];
-  /** Data no formato da planilha: 23/11/2026. */
-  const brDate = (iso: string) => {
-    const [y, m, d] = (iso || "").split("-");
-    return d && m && y ? `${d}/${m}/${y}` : iso || "—";
-  };
-  for (const l of loads) {
-    // Uma linha por produto, no mesmo formato da planilha colada:
-    // data, carga, origem, sigla destino, destino, código, descrição,
-    // caixas, pallets, transportadora, placa, DT.
-    for (const p of l.products) {
-      body.push(
-        [
-          brDate(l.load_date),
-          l.load_number,
-          l.origin || "—",
-          l.destination_code || "—",
-          l.destination || "—",
-          p.sap_code || p.code || "—",
-          p.description || "—",
-          fmtNum(p.boxes),
-          fmtNum(p.pallets ?? 0),
-          l.carrier || "—",
-          normalizePlate(l.plate || "") || "—",
-          l.dt || "—",
-        ].join("\t"),
-      );
-    }
-  }
-  return { subject, body: body.join("\n").trimEnd() };
 }
 
 /** NF / ordem lists are stored as comma-separated text. */
